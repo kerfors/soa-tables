@@ -60,7 +60,7 @@ The batch notebook runs five steps in sequence:
 
 After all protocols: `IndexGeneratorStep` builds the collection index and renders the reports (refreshing each page's navigation), `CollectionsIndexStep` the root index.
 
-The collection index follows the workflow. Per table, against the source pages: Source, 1. Extraction, 2. Resolution, Extraction review, Log. Per protocol, across tables: 3. Consolidation (view, JSON, 'matches: n open of N'), Redacted. Where a collection has them: Beyond the SoA (Protocol context) and Towards CDISC (Activity grain: the study's grain page and its JSON, with named tests / unsure counted; Activity routing: the study's routing page and its JSON, with named tests counted by status). The first identity columns are NCT ID (linked to ClinicalTrials.gov) and Sponsor.
+The collection index follows the workflow. Per table, against the source pages: Source, 1. Extraction, 2. Resolution, Extraction review, Log. Per protocol, across tables: 3. Consolidation (view, JSON, 'matches: n open of N'), Redacted. The first identity columns are NCT ID (linked to ClinicalTrials.gov) and Sponsor.
 
 **Errors are collected, not raised** — partial success matters when one table out of four has issues. Check the batch output for error summaries.
 
@@ -103,53 +103,6 @@ print(errors.has_errors(), errors.summary())
 
 ---
 
-## Protocol context (beyond the SoA)
-
-Where a collection needs facts the SoA tables do not carry (product, immunogenicity, panels, assays, abbreviations), they are extracted per protocol from the full protocol:
-
-1. `python tools/protocol_context_inputs.py` prepares `{NCTID}_pages.txt` (local only) and `SoA2USDM/context/{NCTID}_soa_inputs.json`.
-2. A Claude session runs [`PROTOCOL_CONTEXT_CGT_PROMPT.md`](PROTOCOL_CONTEXT_CGT_PROMPT.md) (cell and gene therapy profile) and writes `SoA2USDM/context/{NCTID}_protocol_context.json`.
-3. `python tools/check_protocol_context.py` checks the schema, and that every evidence quote and abbreviation is on its cited page.
-
-The collection index renders the context page (`{NCTID}_protocol_context.html`). Details: [`tools/README.md`](../tools/README.md).
-
----
-
-## Activity grain (after consolidation)
-
-The grain of every activity, per study, and for a named test the kind of finding. It is the first cut towards CDISC; see [`documents/activity-grain.md`](../documents/activity-grain.md).
-
-```
-pip install -e '.[grain]'          # pandas, openpyxl; cdisc-for-ai checked out next to this repo
-python -m soa_tables.activity_grain --collection usdm_data                        # every study
-python -m soa_tables.activity_grain --collection usdm_data --protocol NCT00000000 # one study
-```
-
-Order: consolidation → activity grain → activity routing → collection index and activity inventory. The index and the Activities page check each grain file against its inputs (the study's inventory rows, `consolidated.json`, protocol context, decisions, grain inputs) and stop on a stale one with the command to rerun. A rerun of consolidation or of the protocol context therefore needs a rerun of the grain.
-
-Decisions for what the rules leave to decide go in `SoA2USDM/grain/{NCTID}_activity_grain_decisions.json` (schema `soa2usdm-activity-grain-decisions`); the generator only reads it. AI proposals, where the study has a protocol context:
-
-```
-python -m soa_tables.activity_grain_inputs --collection cell_gene_therapy --protocol NCT00000000   # gather: grain/{NCTID}_grain_inputs.json
-# a Claude session runs prompts/ACTIVITY_GRAIN_DECISIONS_PROMPT.md on that one file → grain/{NCTID}_activity_grain_decisions.json
-python -m soa_tables.activity_grain --collection cell_gene_therapy --protocol NCT00000000          # check + generate
-```
-
-The generator stops when the grain inputs file is stale, when an AI decision was made from another inputs file, or when a cited entry or cdisc row does not check out (see `documents/activity-grain.md`). When the protocol context is extracted again, gather and propose again.
-
-## Activity routing (after the grain)
-
-Each named test of the grain gets a target SDTMIG v3.4 domain (routed), or the candidate domains and the question that stays open (open, weak, not routed). Public SDTMIG v3.4 statements only; see [`documents/activity-routing.md`](../documents/activity-routing.md).
-
-```
-python -m soa_tables.activity_routing --collection cell_gene_therapy                        # every study with a grain file
-python -m soa_tables.activity_routing --collection cell_gene_therapy --protocol NCT00000000 # one study
-```
-
-The step reads the grain file through the same stale check, and stops when the grain was made at another cdisc-for-ai commit. The index checks each routing file against the grain file and `consolidated.json` and stops on a stale one. A rerun of the grain therefore needs a rerun of routing.
-
----
-
 ## Consolidation review (cross-table matches)
 
 Consolidation merges rows of different tables with the same name, and rows with a name similarity at or above the auto threshold. Below the threshold nothing is merged; the row stays separate and carries the near match as a hint (`near_matches`).
@@ -180,22 +133,10 @@ After the pipeline, `soa-tables-row-audit --collection <name>` compares every ex
 ├── resolved/
 │   ├── {NCTID}_Table_{NN}_resolved.json
 │   └── {NCTID}_Table_{NN}_resolved_viewer.html
-├── consolidated/
-│   ├── {NCTID}_consolidated.json
-│   ├── {NCTID}_consolidation_corrections.json        # match decisions sidecar (where needed)
-│   └── {NCTID}_consolidated.html
-├── context/                                          # where extracted
-│   ├── {NCTID}_soa_inputs.json                       # inputs from the consolidated SoA
-│   ├── {NCTID}_protocol_context.json
-│   └── {NCTID}_protocol_context.html
-├── grain/                                            # where run
-│   ├── {NCTID}_activity_grain.json                   # generated
-│   ├── {NCTID}_activity_grain.html                   # page, rendered with the collection index
-│   ├── {NCTID}_grain_inputs.json                     # gathered for the decisions prompt (where AI proposals are made)
-│   └── {NCTID}_activity_grain_decisions.json         # from the prompt and reviews (where needed)
-└── routing/                                          # where run
-    ├── {NCTID}_activity_routing.json                 # generated
-    └── {NCTID}_activity_routing.html                 # page, rendered with the collection index
+└── consolidated/
+    ├── {NCTID}_consolidated.json
+    ├── {NCTID}_consolidation_corrections.json        # match decisions sidecar (where needed)
+    └── {NCTID}_consolidated.html
 ```
 
 ---

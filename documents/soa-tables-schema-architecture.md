@@ -71,7 +71,7 @@ PDF Protocol Document
 └─────────────────────────────────────────┘
         │
         ▼
-    USDM Instantiation (a documented manual step — see below)
+    USDM Instantiation (in the consumer soa2usdm — see below)
 ```
 
 ---
@@ -158,22 +158,9 @@ Human review findings are recorded as a `*_corrections.json` sidecar and applied
 
 ## USDM Instantiation
 
-Not a fourth layer: the USDM side the repo is named after. It turns one consolidated SoA into
-a USDM v4 document. `soa_tables.usdmgen` lifts the consolidated table into timelines,
-instances, timings, activities and encounters and merges them into the study structure USDM
-requires; `soa_tables.usdm_manifest` supplies the objects the SoA does not state, each flagged
-not stated. The only protocol reading is a short hand-written manifest
-(`schemas/usdm-manifest.schema.json`), and its load-bearing part is the epoch axis — an
-interpretation of the extraction, resolved and logged here, never marked in the Layer 1–3
-schemas.
-
-It is a documented manual step, not a pipeline step: a USDM document exists only for a
-protocol someone chose to build. `tools/usdm_gate.py` checks each build against the pinned
-usdm-rdf release and the NCI EVS codelists USDM borrows. The semantic items listed under
-Layer 3 remain future work. Procedure, decisions and limits:
-[`usdm-instantiation.md`](usdm-instantiation.md).
-
-**Output:** `{NCTID}_usdm.json` and `{NCTID}_usdm_decisions.json`, with the manifest
+Not part of soa-tables. Turning one consolidated SoA into a USDM v4 document is done by the consumer
+[soa2usdm](https://github.com/kerfors/soa2usdm), which reads the consolidated JSON. The semantic items listed under
+Layer 3 remain future work.
 
 ---
 
@@ -229,24 +216,10 @@ Neither check trusts the model's read of the grid; both re-derive from the sourc
 ├── resolved/
 │   ├── *_Table_{NN}_resolved.json   # One per table
 │   └── *_Table_{NN}_resolved_viewer.html   # JSON viewer
-├── consolidated/
-│   ├── {NCTID}_consolidated.json    # Single file per protocol
-│   ├── {NCTID}_consolidation_corrections.json  # Match decisions sidecar (where needed)
-│   └── {NCTID}_consolidated.html    # Consolidated visualization
-├── context/                         # Protocol context beyond the SoA (where extracted)
-│   ├── {NCTID}_protocol_context.json  # prompts/PROTOCOL_CONTEXT_CGT_PROMPT.md
-│   └── {NCTID}_protocol_context.html
-├── grain/                           # Activity grain sidecar (documents/activity-grain.md)
-│   ├── {NCTID}_activity_grain.json            # Generated
-│   ├── {NCTID}_grain_inputs.json              # Gathered for the decisions prompt (where AI proposals are made)
-│   └── {NCTID}_activity_grain_decisions.json  # Decisions from the prompt and reviews (where needed)
-├── routing/                         # Activity routing sidecar (documents/activity-routing.md)
-│   ├── {NCTID}_activity_routing.json          # Generated
-│   └── {NCTID}_activity_routing.html          # Page
-└── usdm/                            # Only where a USDM document was built
-    ├── {NCTID}_usdm_manifest.yaml   # Hand-written
-    ├── {NCTID}_usdm.json            # USDM v4 document
-    └── {NCTID}_usdm_decisions.json  # What was decided, derived or left out
+└── consolidated/
+    ├── {NCTID}_consolidated.json    # Single file per protocol
+    ├── {NCTID}_consolidation_corrections.json  # Match decisions sidecar (where needed)
+    └── {NCTID}_consolidated.html    # Consolidated visualization
 ```
 
 The index generator discovers files by suffix pattern.
