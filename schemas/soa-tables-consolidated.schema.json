@@ -1,0 +1,900 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kerfors.github.io/soa2usdm/schemas/soa-tables-consolidated.json",
+  "title": "SoA Tables Consolidated Schema",
+  "description": "Schema for consolidated Schedule of Activities across multiple tables within a single protocol. Performs structural consolidation: unifies activities across tables via matching, aligns columns into timeline segments, and builds a schedule matrix. This is structural integration only - semantic interpretation (USDM timeline patterns, annotation logic) belongs to a future study-schedule-logic layer.",
+  "type": "object",
+  "required": [
+    "schema_name",
+    "schema_version",
+    "protocol_id",
+    "consolidation_metadata",
+    "unified_activities",
+    "timeline_segments",
+    "schedule_matrix",
+    "unified_annotations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_name": {
+      "type": "string",
+      "const": "soa-tables-consolidated",
+      "description": "Schema identifier for pipeline routing"
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7"],
+      "description": "Schema version. 1.2 adds property_type 'visit_attribute'. 1.3 adds near_matches on a unified activity and match_status / match_confidence on each source reference; from 1.3 a fuzzy match below the auto threshold is not merged, so review_queue is empty. 1.4 adds what the consolidation corrections sidecar (soa-consolidation-corrections) leaves in the output: 'decision' on a source reference or a near match, match_status 'decision', 'refines' / 'refined_by' on a unified activity, 'refines' on a source table, and review_stats / corrections_applied in consolidation_metadata. 1.5 adds document_references on a unified annotation. 1.6: a continuation or domain table's columns join the main columns they repeat (one unified column, several source_columns); the segment 'domain' is no longer produced. 1.7 adds annotation_type 'placeholder' with placeholder_reason, and review_note, on a unified annotation. Files stamped 1.1 to 1.6 remain valid."
+    },
+    "protocol_id": {
+      "type": "string",
+      "description": "Protocol identifier (e.g., NCT number)"
+    },
+    "consolidation_metadata": {
+      "$ref": "#/definitions/consolidation_metadata",
+      "description": "Metadata about the consolidation process and source tables"
+    },
+    "property_hierarchy": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/property_info"
+      },
+      "description": "Unified property hierarchy across tables, ordered by level; rows without a level follow in print order (from 1.3; the position in the lowest-numbered table that prints the row). Note: per-table hierarchies may differ - see source_tables for individual structures."
+    },
+    "review_queue": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/review_item"
+      },
+      "description": "Activity matches that were merged below the auto threshold and queued for review. Empty from 1.3: such a match is no longer merged; see near_matches on the unified activity."
+    },
+    "unified_activities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/unified_activity"
+      },
+      "description": "Master activity list consolidated across all source tables"
+    },
+    "timeline_segments": {
+      "type": "object",
+      "description": "Columns organized by segment type. Keys are segment names (main, domain, track, subsidiary); from 1.6 no 'domain' key is produced, as a domain or continuation table's columns join the main columns they repeat.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/unified_column"
+        }
+      }
+    },
+    "schedule_matrix": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/schedule_cell"
+      },
+      "description": "Consolidated schedule data at (activity × column) intersections. Only non-empty cells included."
+    },
+    "unified_annotations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/unified_annotation"
+      },
+      "description": "Annotations consolidated across all source tables. Identical annotation text is deduplicated with source occurrences tracked."
+    },
+    "review_items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/extraction_review_item"
+      },
+      "description": "Open judgement calls from every table of the protocol, each with its table_number. Present only when at least one table carried review_items. Distinct from review_queue, which holds consolidation's own low-confidence activity matches."
+    }
+  },
+  "definitions": {
+    "extraction_review_item": {
+      "type": "object",
+      "description": "One open judgement call the extractor made that a reviewer could reasonably overturn. Mirrors one row of the uncertainty report's 'Decisions needed' block (prompt section 7). Resolution is NOT recorded here: an item counts as decided when a corrections-sidecar entry names its id in 'review_item', so the raw extraction stays immutable and the sidecar is the only write path.",
+      "required": ["table_number", "id", "severity", "location", "call_made", "alternative", "report_section"],
+      "additionalProperties": false,
+      "properties": {
+        "table_number": {
+          "type": "integer",
+          "description": "Source table the item was raised in."
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^D[0-9]+$",
+          "description": "Decision id, unique across ALL tables of the protocol (D1, D2, ...) and identical to the id printed in the report's Decisions-needed block."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "high = changes rows, marks or what a note governs; medium = changes a type or a name; low = presentation only."
+        },
+        "location": {
+          "type": "object",
+          "required": ["page"],
+          "additionalProperties": false,
+          "properties": {
+            "page": {"type": "integer", "description": "Document page the call is about (same numbering as source_page)."},
+            "row_position": {"type": "integer", "description": "The activity or schedule_property row the call is about, when it is one row."},
+            "row_positions": {"type": "array", "items": {"type": "integer"}, "description": "All rows the call is about, when more than one."},
+            "column_position": {"type": "integer", "description": "The column the call is about, when it is one cell or one column."},
+            "annotation_marker": {"type": "string", "description": "Marker of the annotation the call is about, when it concerns a note's scope or existence."}
+          },
+          "description": "Where on the printed page the call applies."
+        },
+        "call_made": {
+          "type": "string",
+          "description": "What the extraction records, in one or two plain sentences a reviewer without the schema can read."
+        },
+        "alternative": {
+          "type": "string",
+          "description": "The other reasonable reading, stated so that a reviewer can choose it."
+        },
+        "report_section": {
+          "type": "string",
+          "description": "Section of the uncertainty report holding the detail (e.g. '5.2')."
+        }
+      }
+    },
+    "consolidation_metadata": {
+      "type": "object",
+      "description": "Metadata about the consolidation process and source tables",
+      "required": [
+        "consolidated_at",
+        "source_tables",
+        "source_activity_count",
+        "unified_activity_count"
+      ],
+      "properties": {
+        "consolidated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of consolidation"
+        },
+        "consolidator": {
+          "type": "string",
+          "description": "Tool/version that performed consolidation"
+        },
+        "source_tables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/source_table_info"
+          },
+          "description": "Information about each source resolved table"
+        },
+        "match_stats": {
+          "type": "object",
+          "description": "Activity matching statistics",
+          "properties": {
+            "exact": {
+              "type": "integer",
+              "description": "Exact name matches"
+            },
+            "fuzzy_auto": {
+              "type": "integer",
+              "description": "Fuzzy matches auto-accepted (high confidence)"
+            },
+            "fuzzy_cross_parent": {
+              "type": "integer",
+              "description": "Fuzzy matches across different parents"
+            },
+            "fuzzy_review": {
+              "type": "integer",
+              "description": "Fuzzy matches merged below the auto threshold. 0 from 1.3: such a match is not merged on any table pair and the activity counts as new"
+            },
+            "decision": {
+              "type": "integer",
+              "description": "Source rows joined to an activity by a 'merge' entry of the consolidation corrections sidecar. From 1.4."
+            },
+            "new": {
+              "type": "integer",
+              "description": "New activities (no match found)"
+            }
+          }
+        },
+        "source_activity_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total activities across all source tables (excluding reference tables)"
+        },
+        "unified_activity_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Activities after consolidation"
+        },
+        "review_stats": {
+          "type": "object",
+          "description": "Cross-table matches a reviewer can decide: every source row merged on a fuzzy score or by a decision, every row split off by a decision, and every near match. One is decided exactly when an entry of the consolidation corrections sidecar names it. From 1.4.",
+          "required": ["total", "open", "decided", "near_matches"],
+          "additionalProperties": false,
+          "properties": {
+            "total": {"type": "integer", "minimum": 0, "description": "Matches to review"},
+            "open": {"type": "integer", "minimum": 0, "description": "Matches without a decision"},
+            "decided": {"type": "integer", "minimum": 0, "description": "Matches a sidecar entry names"},
+            "near_matches": {"type": "integer", "minimum": 0, "description": "Near matches (hints) in the file, decided or not"}
+          }
+        },
+        "corrections_applied": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of entries in the consolidation corrections sidecar that was read. Present only when the protocol has one. From 1.4."
+        },
+        "compression_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Reduction from source to unified: (1 - unified/source) * 100"
+        },
+        "annotation_stats": {
+          "type": "object",
+          "description": "Annotation consolidation statistics",
+          "properties": {
+            "source_annotation_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total annotations across all source tables"
+            },
+            "unified_annotation_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Annotations after deduplication"
+            },
+            "deduplicated_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of annotations removed by deduplication"
+            },
+            "deduplication_percent": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Percentage of source annotations deduplicated"
+            },
+            "by_type": {
+              "type": "object",
+              "description": "Count of unified annotations by type",
+              "additionalProperties": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    },
+    "source_table_info": {
+      "type": "object",
+      "description": "Information about a source resolved table",
+      "required": [
+        "table_id",
+        "table_num",
+        "table_type"
+      ],
+      "properties": {
+        "table_id": {
+          "type": "string",
+          "pattern": "^table-[0-9]{3}$",
+          "description": "Table identifier from resolved schema"
+        },
+        "table_num": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Table number in protocol"
+        },
+        "table_type": {
+          "type": "string",
+          "enum": ["main_soa", "continuation", "domain", "subsidiary", "track", "reference"],
+          "description": "Table type classification from extraction (v4)"
+        },
+        "table_title": {
+          "type": "string",
+          "description": "Table title from source"
+        },
+        "table_purpose": {
+          "type": "string",
+          "description": "Table purpose description"
+        },
+        "track_label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Population/phase track label for track tables. null for non-track tables."
+        },
+        "activity_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of activities in source table"
+        },
+        "column_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of data columns in source table"
+        },
+        "property_hierarchy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/property_info"
+          },
+          "description": "Property hierarchy for this specific table"
+        },
+        "refines": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Unified activities this table as a whole details, stated by 'refines' entries of the consolidation corrections sidecar that name the table as source. Present only when there is one. From 1.4.",
+          "items": {
+            "type": "object",
+            "required": ["xact_id", "correction_id"],
+            "additionalProperties": false,
+            "properties": {
+              "xact_id": {"type": "string", "pattern": "^xact-[0-9]{3}$", "description": "The unified activity that is refined"},
+              "correction_id": {"type": "string", "description": "Id of the sidecar entry"}
+            }
+          }
+        }
+      }
+    },
+    "property_info": {
+      "type": "object",
+      "description": "Property metadata from source tables",
+      "required": [
+        "hierarchical_level",
+        "property_type"
+      ],
+      "properties": {
+        "property_id": {
+          "type": "string",
+          "description": "Property ID from the first source table that contributed this property; suffixed '-t<table>' when that id is already used by another unified property"
+        },
+        "hierarchical_level": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "Level in header hierarchy (1 = topmost). null for qualifier properties (modality/condition) outside the hierarchical structure."
+        },
+        "property_name": {
+          "type": "string",
+          "description": "Property name (may be empty for implicit properties)"
+        },
+        "property_type": {
+          "type": "string",
+          "enum": ["epoch", "period", "cycle", "visit", "study_day", "week", "timepoint", "window", "modality", "condition", "visit_attribute", "other"],
+          "description": "Property type classification"
+        },
+        "property_comment": {
+          "type": "string",
+          "description": "Human explanation of property"
+        }
+      }
+    },
+    "review_item": {
+      "type": "object",
+      "description": "An activity match requiring human review",
+      "required": [
+        "xact_id",
+        "confidence",
+        "existing_name",
+        "new_name"
+      ],
+      "properties": {
+        "xact_id": {
+          "type": "string",
+          "pattern": "^xact-[0-9]{3}$",
+          "description": "Unified activity ID"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Match confidence score"
+        },
+        "existing_name": {
+          "type": "string",
+          "description": "Activity name in unified list"
+        },
+        "new_name": {
+          "type": "string",
+          "description": "Activity name from new table that was matched"
+        }
+      }
+    },
+    "unified_activity": {
+      "type": "object",
+      "description": "An activity consolidated across tables",
+      "required": [
+        "xact_id",
+        "activity_name",
+        "hierarchy_level",
+        "display_order",
+        "qualified_key",
+        "is_section_header",
+        "source_refs"
+      ],
+      "properties": {
+        "xact_id": {
+          "type": "string",
+          "pattern": "^xact-[0-9]{3}$",
+          "description": "Cross-table activity identifier"
+        },
+        "activity_name": {
+          "type": "string",
+          "description": "Canonical activity name"
+        },
+        "parent_name": {
+          "type": "string",
+          "description": "Parent activity name (for hierarchy context). May contain ' / ' if matched across different parents."
+        },
+        "parent_xact_id": {
+          "type": ["string", "null"],
+          "pattern": "^xact-[0-9]{3}$",
+          "description": "Reference to parent unified activity. null for top-level activities."
+        },
+        "hierarchy_level": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Hierarchy level: 0 = section header/top-level, 1 = child, 2 = grandchild, etc."
+        },
+        "display_order": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Position in hierarchical display order. Activities sorted by display_order appear with parents before children and siblings in source row order."
+        },
+        "qualified_key": {
+          "type": "string",
+          "description": "Parent::Activity key used for matching"
+        },
+        "is_section_header": {
+          "type": "boolean",
+          "description": "True if this is a grouping header without schedule data"
+        },
+        "is_redacted": {
+          "type": "boolean",
+          "description": "True if any source row's activity name is a redaction placeholder ('CCI'). Carried up from the resolved layer; exception-based - present only when true."
+        },
+        "near_matches": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Near matches this activity was NOT merged into: a fuzzy match below the auto threshold. A hint, not a decision. Present only when there is one.",
+          "items": {
+            "type": "object",
+            "required": ["xact_id", "activity_name", "score", "table_num"],
+            "additionalProperties": false,
+            "properties": {
+              "xact_id": {
+                "type": "string",
+                "pattern": "^xact-[0-9]{3}$",
+                "description": "The unified activity that was the best candidate"
+              },
+              "activity_name": {
+                "type": "string",
+                "description": "Name of that candidate"
+              },
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Similarity score of the near match"
+              },
+              "table_num": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Source table of this activity's row for which the near match was found"
+              },
+              "decision": {
+                "$ref": "#/definitions/decision_ref",
+                "description": "The sidecar 'keep' entry stating that the activity stays separate from this near match. Present only when there is one. From 1.4."
+              }
+            }
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/activity_source_ref"
+          },
+          "description": "References to source table activities"
+        },
+        "refines": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Unified activities this activity details, stated by 'refines' entries of the consolidation corrections sidecar. A relation, not a merge. Present only when there is one. From 1.4.",
+          "items": {
+            "type": "object",
+            "required": ["xact_id", "correction_id"],
+            "additionalProperties": false,
+            "properties": {
+              "xact_id": {"type": "string", "pattern": "^xact-[0-9]{3}$", "description": "The unified activity that is refined"},
+              "correction_id": {"type": "string", "description": "Id of the sidecar entry"}
+            }
+          }
+        },
+        "refined_by": {
+          "type": "array",
+          "minItems": 1,
+          "description": "What details this activity, stated by 'refines' entries of the consolidation corrections sidecar: a unified activity (xact_id) or a whole source table (table_num). Present only when there is one. From 1.4.",
+          "items": {
+            "type": "object",
+            "required": ["correction_id"],
+            "additionalProperties": false,
+            "properties": {
+              "xact_id": {"type": "string", "pattern": "^xact-[0-9]{3}$", "description": "The refining unified activity"},
+              "table_num": {"type": "integer", "minimum": 1, "description": "The refining source table, when the entry names a whole table"},
+              "correction_id": {"type": "string", "description": "Id of the sidecar entry"}
+            }
+          }
+        },
+        "name_variations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Different name spellings found across tables"
+        },
+        "match_status": {
+          "type": "string",
+          "enum": ["new", "exact", "fuzzy_auto", "fuzzy_cross_parent", "fuzzy_review", "decision"],
+          "description": "How this activity was matched/created (the status of the last source row added to it)"
+        },
+        "match_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Lowest confidence score from matching (1.0 for exact/new)"
+        },
+        "table_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of tables this activity appears in"
+        }
+      }
+    },
+    "decision_ref": {
+      "type": "object",
+      "description": "Reference to the entry of the protocol's consolidation corrections sidecar that decided a cross-table match",
+      "required": ["correction_id", "op"],
+      "additionalProperties": false,
+      "properties": {
+        "correction_id": {"type": "string", "description": "Id of the sidecar entry"},
+        "op": {"type": "string", "enum": ["keep", "split", "merge"], "description": "The entry's op"}
+      }
+    },
+    "activity_source_ref": {
+      "type": "object",
+      "description": "Reference to an activity in a source table",
+      "required": [
+        "table_id",
+        "table_num",
+        "activity_id",
+        "row_position"
+      ],
+      "properties": {
+        "table_id": {
+          "type": "string",
+          "pattern": "^table-[0-9]{3}$",
+          "description": "table_id of the source resolved table."
+        },
+        "table_num": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Table number of the source table in the protocol."
+        },
+        "activity_id": {
+          "type": "string",
+          "pattern": "^act-[0-9]{3}$",
+          "description": "activity_id of the row in that table."
+        },
+        "row_position": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Physical row position of the row in that table, preserved from extraction."
+        },
+        "match_status": {
+          "type": "string",
+          "enum": [
+            "new",
+            "exact",
+            "fuzzy_auto",
+            "fuzzy_cross_parent",
+            "fuzzy_review",
+            "decision"
+          ],
+          "description": "How this source row came to the unified activity; 'new' = the row that created it; 'decision' = joined by a 'merge' entry of the consolidation corrections sidecar (from 1.4). From 1.3."
+        },
+        "decision": {
+          "$ref": "#/definitions/decision_ref",
+          "description": "The sidecar entry that decided this source row: 'keep' (the merge stands), 'merge' (joined by decision) or 'split' (taken out of a merge; the row then has match_status 'new'). Present only when there is one. From 1.4."
+        },
+        "match_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Score of this source row's match (1.0 for exact/new). From 1.3."
+        }
+      }
+    },
+    "unified_column": {
+      "type": "object",
+      "description": "A column in the unified timeline",
+      "required": [
+        "xcol_id",
+        "composite_label",
+        "segment",
+        "source_columns"
+      ],
+      "properties": {
+        "xcol_id": {
+          "type": "string",
+          "pattern": "^xcol-[0-9]{3}$",
+          "description": "Cross-table column identifier"
+        },
+        "composite_label": {
+          "type": "string",
+          "description": "Human-readable label from property values"
+        },
+        "segment": {
+          "type": "string",
+          "enum": ["main", "domain", "track", "subsidiary"],
+          "description": "Timeline segment this column belongs to. 'main'=primary timeline; 'domain'=same timeline, different activity category (files before 1.6; from 1.6 such columns join 'main'); 'track'=a branch only some participants take; 'subsidiary'=finer timing detail."
+        },
+        "population_track": {
+          "type": ["string", "null"],
+          "description": "Population/phase identifier for track segments"
+        },
+        "property_values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/column_property_value"
+          },
+          "description": "Property values for this column, ordered by level"
+        },
+        "source_columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/column_source_ref"
+          },
+          "description": "References to source table columns: the column's own table first, then each continuation or domain table that prints the same column (from 1.6)"
+        }
+      }
+    },
+    "column_property_value": {
+      "type": "object",
+      "description": "A property value for a specific column",
+      "required": [
+        "level",
+        "property_type",
+        "value"
+      ],
+      "properties": {
+        "level": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "Hierarchical level. null for qualifier property values."
+        },
+        "property_type": {
+          "type": "string",
+          "description": "Property type at this level"
+        },
+        "property_name": {
+          "type": "string",
+          "description": "Property name at this level"
+        },
+        "value": {
+          "type": "string",
+          "description": "Value at this level for this column"
+        }
+      }
+    },
+    "column_source_ref": {
+      "type": "object",
+      "description": "Reference to a column in a source table",
+      "required": [
+        "table_id",
+        "table_num",
+        "column_id",
+        "column_position"
+      ],
+      "properties": {
+        "table_id": {
+          "type": "string",
+          "pattern": "^table-[0-9]{3}$",
+          "description": "table_id of the source resolved table."
+        },
+        "table_num": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Table number of the source table in the protocol."
+        },
+        "column_id": {
+          "type": "string",
+          "pattern": "^col-[0-9]{3}$",
+          "description": "column_id of the column in that table."
+        },
+        "column_position": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Column position of the column in that table."
+        }
+      }
+    },
+    "schedule_cell": {
+      "type": "object",
+      "description": "A non-empty cell in the consolidated schedule matrix",
+      "required": [
+        "xact_id",
+        "xcol_id",
+        "consolidated_value"
+      ],
+      "properties": {
+        "xact_id": {
+          "type": "string",
+          "pattern": "^xact-[0-9]{3}$",
+          "description": "Unified activity ID"
+        },
+        "xcol_id": {
+          "type": "string",
+          "pattern": "^xcol-[0-9]{3}$",
+          "description": "Unified column ID"
+        },
+        "consolidated_value": {
+          "type": "string",
+          "description": "Consolidated cell value. If sources differ, formatted as '[val1, val2]'."
+        },
+        "source_values": {
+          "type": "object",
+          "description": "Per-table source values. Keys are table numbers (as strings).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "unified_annotation": {
+      "type": "object",
+      "description": "An annotation consolidated across tables. Identical text is deduplicated with all source occurrences tracked; a placeholder is never deduplicated (it has no text).",
+      "allOf": [
+        {
+          "if": {"properties": {"annotation_type": {"const": "placeholder"}}, "required": ["annotation_type"]},
+          "then": {"required": ["placeholder_reason"], "properties": {"annotation_text": {"const": ""}}},
+          "else": {"not": {"required": ["placeholder_reason"]}}
+        }
+      ],
+      "required": [
+        "xannot_id",
+        "annotation_type",
+        "annotation_text",
+        "source_occurrences"
+      ],
+      "properties": {
+        "xannot_id": {
+          "type": "string",
+          "pattern": "^xannot-[0-9]{3}$",
+          "description": "Cross-table annotation identifier"
+        },
+        "annotation_type": {
+          "type": "string",
+          "enum": ["footnote", "legend", "abbreviation", "source_note", "continuation_note", "placeholder"],
+          "description": "Annotation type classification. 'placeholder'=a marker with no protocol text behind it (see placeholder_reason); annotation_text is empty."
+        },
+        "placeholder_reason": {
+          "type": "string",
+          "enum": ["redacted", "not_printed", "reviewer_note"],
+          "description": "Present exactly when annotation_type is 'placeholder': why the marker has no protocol text. 'redacted'=the text is covered by a redaction box; 'not_printed'=the marker is printed but its definition is not printed in the source; 'reviewer_note'=a marker synthesized to carry a reviewer's note (the note is in review_note)."
+        },
+        "review_note": {
+          "type": "string",
+          "description": "Text that is not protocol text: a probable equivalent from another table or protocol, a reviewer's finding. Shown on review pages, never read as SoA content (not in grain inputs). Set through a corrections sidecar."
+        },
+        "annotation_text": {
+          "type": "string",
+          "description": "Full annotation text"
+        },
+        "display_markers": {
+          "type": "string",
+          "description": "Human-readable summary of source markers (e.g., 'T1:e, T2-4:a')"
+        },
+        "source_occurrences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/annotation_occurrence"
+          },
+          "description": "All source table occurrences of this annotation"
+        },
+        "referenced_xacts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^xact-[0-9]{3}$"
+          },
+          "description": "Unified activity IDs this annotation references"
+        },
+        "referenced_xcols": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^xcol-[0-9]{3}$"
+          },
+          "description": "Unified column IDs this annotation references"
+        },
+        "referenced_props": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Unified property IDs (from property_hierarchy) this annotation references, from markers carried on property rows; empty for a table-wide note. Optional: absent in files consolidated before this field existed."
+        },
+        "cell_references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "xact_id": {
+                "type": "string",
+                "pattern": "^xact-[0-9]{3}$",
+                "description": "Unified activity of the cell."
+              },
+              "xcol_id": {
+                "type": "string",
+                "pattern": "^xcol-[0-9]{3}$",
+                "description": "Unified column of the cell."
+              }
+            }
+          },
+          "description": "Specific cell references (activity × column)"
+        },
+        "occurrence_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of times this annotation appears across tables"
+        },
+        "document_references": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Numbered targets in the protocol document that the annotation text points at, carried from the resolved tables. A 'table' reference whose number is the printed number of exactly one of this protocol's extracted tables (its title starts 'Table N') also carries table_num. Present only when there is one. From 1.5.",
+          "items": {
+            "type": "object",
+            "required": ["kind", "target"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {"type": "string", "enum": ["section", "appendix", "attachment", "table", "figure"], "description": "What the note points at"},
+              "target": {"type": "string", "description": "Its number or letter as printed, e.g. '8.2.2', 'C', '5.1-1'"},
+              "table_num": {"type": "integer", "minimum": 1, "description": "For kind 'table': the extracted source table that prints this number in its title"}
+            }
+          }
+        },
+        "annotation_scope": {
+          "type": "string",
+          "enum": ["table"],
+          "description": "Present only for a table-wide note (prompt §6): no element carries its marker and every source location is a schedule_property location. It binds nothing by design and is not an orphan."
+        }
+      }
+    },
+    "annotation_occurrence": {
+      "type": "object",
+      "description": "A single occurrence of an annotation in a source table",
+      "required": [
+        "table_num",
+        "marker",
+        "annotation_id"
+      ],
+      "properties": {
+        "table_num": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Source table number"
+        },
+        "marker": {
+          "type": "string",
+          "description": "Annotation marker in source table (e.g., 'a', 'b', '*')"
+        },
+        "annotation_id": {
+          "type": "string",
+          "pattern": "^annot-[0-9]{3}$",
+          "description": "Original annotation ID in source table"
+        }
+      }
+    }
+  }
+}

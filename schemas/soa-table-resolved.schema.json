@@ -1,0 +1,881 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kerfors.github.io/soa2usdm/schemas/soa-table-resolved.json",
+  "title": "SoA Table Resolved Schema",
+  "description": "Schema for a validated, identified, and relationship-resolved SoA table. Takes extraction output and makes it precise: stable identifiers for every element, explicit parent-child relationships, resolved annotation cross-references, and validated structural integrity. Still represents the table as it appears in the protocol - not yet study logic semantics. Prepares the table for integration with other tables and eventual mapping to study-schedule-logic. Key principle: Everything derivable from extraction is now derived; everything that needs validation is validated; every element is addressable.",
+  "definitions": {
+    "review_item": {
+      "type": "object",
+      "description": "One open judgement call the extractor made that a reviewer could reasonably overturn. Mirrors one row of the uncertainty report's 'Decisions needed' block (prompt section 7). Resolution is NOT recorded here: an item counts as decided when a corrections-sidecar entry names its id in 'review_item', so the raw extraction stays immutable and the sidecar is the only write path.",
+      "required": ["id", "severity", "location", "call_made", "alternative", "report_section"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^D[0-9]+$",
+          "description": "Decision id, unique across ALL tables of the protocol (D1, D2, ...) and identical to the id printed in the report's Decisions-needed block."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "high = changes rows, marks or what a note governs; medium = changes a type or a name; low = presentation only."
+        },
+        "location": {
+          "type": "object",
+          "required": ["page"],
+          "additionalProperties": false,
+          "properties": {
+            "page": {"type": "integer", "description": "Document page the call is about (same numbering as source_page)."},
+            "row_position": {"type": "integer", "description": "The activity or schedule_property row the call is about, when it is one row."},
+            "row_positions": {"type": "array", "items": {"type": "integer"}, "description": "All rows the call is about, when more than one."},
+            "column_position": {"type": "integer", "description": "The column the call is about, when it is one cell or one column."},
+            "annotation_marker": {"type": "string", "description": "Marker of the annotation the call is about, when it concerns a note's scope or existence."}
+          },
+          "description": "Where on the printed page the call applies."
+        },
+        "call_made": {
+          "type": "string",
+          "description": "What the extraction records, in one or two plain sentences a reviewer without the schema can read."
+        },
+        "alternative": {
+          "type": "string",
+          "description": "The other reasonable reading, stated so that a reviewer can choose it."
+        },
+        "report_section": {
+          "type": "string",
+          "description": "Section of the uncertainty report holding the detail (e.g. '5.2')."
+        }
+      }
+    },
+    "table_metadata": {
+      "type": "object",
+      "description": "Enhanced table metadata with resolution tracking. Inherits from extraction, adds resolution context.",
+      "required": [
+        "table_id",
+        "table_number",
+        "table_type",
+        "page_start",
+        "page_end"
+      ],
+      "properties": {
+        "table_id": {
+          "type": "string",
+          "pattern": "^table-[0-9]{3}$",
+          "description": "Stable identifier for this table (e.g., 'table-001'). Generated during resolution. Used for cross-referencing in multi-table protocols."
+        },
+        "table_number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Sequential table number from source protocol (1, 2, 3...). Preserved from extraction."
+        },
+        "table_type": {
+          "type": "string",
+          "enum": [
+            "main_soa",
+            "continuation",
+            "domain",
+            "subsidiary",
+            "track",
+            "reference"
+          ],
+          "description": "Classification preserved from extraction (v4). Determines consolidation strategy in Layer 3."
+        },
+        "table_title": {
+          "type": "string",
+          "description": "Table title as written in source document. Preserved from extraction."
+        },
+        "table_purpose": {
+          "type": "string",
+          "description": "Description of table scope. Preserved or enhanced from extraction."
+        },
+        "page_start": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Starting document page (position in the full protocol PDF)"
+        },
+        "page_end": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Ending document page"
+        },
+        "continuation_of": {
+          "type": "string",
+          "pattern": "^table-[0-9]{3}$",
+          "description": "If this table continues another, the table_id it continues. Resolved from table_number reference in extraction."
+        },
+        "track_label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Short population/phase identifier for track tables. Preserved from extraction. null for non-track tables."
+        },
+        "column_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of columns in table. Derived during resolution for validation."
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of rows in table. Derived during resolution for validation."
+        },
+        "header_row_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of schedule property (header) rows. Derived from schedule_properties array."
+        },
+        "activity_row_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of activity rows. Derived from activities array."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Notes from extraction plus any resolution notes"
+        }
+      }
+    },
+    "schedule_property": {
+      "type": "object",
+      "description": "A resolved schedule property with stable ID and explicit hierarchical relationships.",
+      "required": [
+        "property_id",
+        "table_id",
+        "row_position",
+        "property_name",
+        "property_type",
+        "property_comment",
+        "hierarchical_level"
+      ],
+      "properties": {
+        "property_id": {
+          "type": "string",
+          "pattern": "^prop-[0-9]{3}$",
+          "description": "Stable identifier for this schedule property (e.g., 'prop-001'). Generated sequentially by row_position within table."
+        },
+        "table_id": {
+          "type": "string",
+          "pattern": "^table-[0-9]{3}$",
+          "description": "Reference to containing table"
+        },
+        "row_position": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Physical row position preserved from extraction"
+        },
+        "property_name": {
+          "type": "string",
+          "description": "Property name (clean). Preserved from extraction."
+        },
+        "property_name_source": {
+          "type": "object",
+          "description": "Source attribution preserved from extraction",
+          "properties": {
+            "row_position": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Row in source where property name was found"
+            },
+            "column_position": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Column in source where property name was found (typically column 1 for row labels)"
+            },
+            "cell_value": {
+              "type": "string",
+              "description": "Exact cell content from source. Empty string if label column was empty and property_name was synthesized."
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "true if property_name was created through domain interpretation rather than extracted directly. Omit or false if property_name came directly from source."
+            }
+          }
+        },
+        "property_type": {
+          "type": "string",
+          "enum": [
+            "epoch",
+            "period",
+            "cycle",
+            "visit",
+            "study_day",
+            "week",
+            "timepoint",
+            "window",
+            "modality",
+            "condition",
+            "visit_attribute",
+            "other"
+          ],
+          "description": "Domain classification. Validated during resolution - must be assigned (no null)."
+        },
+        "property_comment": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Human explanation of this property. Validated non-empty during resolution."
+        },
+        "hierarchical_level": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "Position in header hierarchy. null for qualifier rows (modality/condition) that sit outside the hierarchical header structure, matching the extraction schema."
+        },
+        "parent_property_id": {
+          "type": ["string", "null"],
+          "pattern": "^prop-[0-9]{3}$",
+          "description": "ID of parent property in hierarchy (e.g., Visit's parent is Epoch). Derived from hierarchical_level relationships. null for top-level properties."
+        },
+        "child_property_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^prop-[0-9]{3}$"
+          },
+          "description": "IDs of child properties. Derived from hierarchical_level relationships. Empty array for leaf properties."
+        },
+        "annotation_markers": {
+          "type": "string",
+          "description": "Comma-separated annotation markers. Preserved from extraction."
+        },
+        "linked_annotation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^annot-[0-9]{3}$"
+          },
+          "description": "IDs of annotations linked to this property. Derived by matching annotation_markers to annotations array."
+        }
+      }
+    },
+    "schedule_column": {
+      "type": "object",
+      "description": "A resolved schedule column representing a single timepoint/visit column in the table. Columns are implicit in extraction (derived from grid positions); made explicit here for downstream use.",
+      "required": [
+        "column_id",
+        "table_id",
+        "column_position",
+        "column_values"
+      ],
+      "properties": {
+        "column_id": {
+          "type": "string",
+          "pattern": "^col-[0-9]{3}$",
+          "description": "Stable identifier for this column (e.g., 'col-002'). Generated sequentially by column_position."
+        },
+        "table_id": {
+          "type": "string",
+          "pattern": "^table-[0-9]{3}$",
+          "description": "Reference to containing table"
+        },
+        "column_position": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Physical column position. Column 1 is typically row labels; schedule columns start at 2+."
+        },
+        "is_label_column": {
+          "type": "boolean",
+          "description": "true if this is the row label column (typically column 1), not a schedule data column"
+        },
+        "column_values": {
+          "type": "array",
+          "description": "Hierarchical property values for this column, ordered by hierarchical_level. Represents the full timepoint identification (e.g., ['Treatment', 'Visit 3', 'Day 15']).",
+          "items": {
+            "type": "object",
+            "required": [
+              "property_id",
+              "value"
+            ],
+            "properties": {
+              "property_id": {
+                "type": "string",
+                "pattern": "^prop-[0-9]{3}$",
+                "description": "Reference to the schedule_property this value belongs to"
+              },
+              "value": {
+                "type": "string",
+                "description": "The cell value at this property level for this column"
+              },
+              "is_merged": {
+                "type": "boolean",
+                "description": "true if this value came from a merged cell spanning multiple columns"
+              },
+              "merge_span": {
+                "type": "object",
+                "description": "If merged, the column range this value spans",
+                "properties": {
+                  "start_column": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "First column position of the merged cell."
+                  },
+                  "end_column": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Last column position of the merged cell."
+                  }
+                }
+              },
+              "annotation_markers": {
+                "type": "string",
+                "description": "Annotation markers on this specific cell value"
+              }
+            }
+          }
+        },
+        "composite_label": {
+          "type": "string",
+          "description": "Human-readable composite label joining all hierarchical values (e.g., 'Treatment / Visit 3 / Day 15'). Generated for convenience."
+        }
+      }
+    },
+    "activity": {
+      "type": "object",
+      "description": "A resolved activity with stable ID and explicit parent-child relationships derived from indentation_level.",
+      "required": [
+        "activity_id",
+        "table_id",
+        "row_position",
+        "activity_name",
+        "hierarchy_level",
+        "is_section_header"
+      ],
+      "properties": {
+        "activity_id": {
+          "type": "string",
+          "pattern": "^act-[0-9]{3}$",
+          "description": "Stable identifier for this activity (e.g., 'act-015'). Generated sequentially by row_position."
+        },
+        "table_id": {
+          "type": "string",
+          "pattern": "^table-[0-9]{3}$",
+          "description": "Reference to containing table"
+        },
+        "row_position": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Physical row position preserved from extraction"
+        },
+        "activity_name": {
+          "type": "string",
+          "description": "Activity name (clean). Preserved from extraction."
+        },
+        "activity_name_source": {
+          "type": "object",
+          "description": "Source attribution preserved from extraction",
+          "properties": {
+            "cell_text": {
+              "type": "string",
+              "description": "Exact text from source cell including leading whitespace and annotation markers."
+            },
+            "hierarchy_level": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Hierarchy level of the row, as on the activity."
+            },
+            "text_formatting": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Text formatting attributes, as in the extraction."
+            },
+            "font_info": {
+              "type": "object",
+              "description": "Font information, as in the extraction, if captured."
+            }
+          }
+        },
+        "hierarchy_level": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Hierarchy level derived from source indentation. 0 = section header/top-level, 1 = child, 2 = grandchild, etc."
+        },
+        "is_section_header": {
+          "type": "boolean",
+          "description": "true if this activity is a grouping header (typically indentation_level 0, bold, no schedule data). Derived from indentation + formatting + schedule data presence."
+        },
+        "is_redacted": {
+          "type": "boolean",
+          "description": "true if the activity name is a redaction placeholder printed in the public protocol ('CCI', optionally qualified). Derived at resolve by exact-pattern match; exception-based - present only when true. The verbatim placeholder stays in activity_name."
+        },
+        "parent_activity_id": {
+          "type": ["string", "null"],
+          "pattern": "^act-[0-9]{3}$",
+          "description": "ID of parent activity in hierarchy. Derived by scanning backward for lower indentation_level. null for top-level activities."
+        },
+        "child_activity_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^act-[0-9]{3}$"
+          },
+          "description": "IDs of direct child activities. Derived from indentation_level relationships. Empty array for leaf activities."
+        },
+        "has_schedule_data": {
+          "type": "boolean",
+          "description": "true if this activity has any non-empty cells in the schedule grid. Derived from activity_schedule array. Section headers typically false."
+        },
+        "annotation_markers": {
+          "type": "string",
+          "description": "Annotation markers on activity name. Preserved from extraction."
+        },
+        "linked_annotation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^annot-[0-9]{3}$"
+          },
+          "description": "IDs of annotations linked to this activity. Derived by matching annotation_markers."
+        }
+      }
+    },
+    "activity_schedule_value": {
+      "type": "object",
+      "description": "A resolved schedule value at an activity × column intersection. Now uses IDs instead of positions for cross-referencing.",
+      "required": [
+        "activity_id",
+        "column_id",
+        "cell_value"
+      ],
+      "properties": {
+        "activity_id": {
+          "type": "string",
+          "pattern": "^act-[0-9]{3}$",
+          "description": "Reference to the activity (row)"
+        },
+        "column_id": {
+          "type": "string",
+          "pattern": "^col-[0-9]{3}$",
+          "description": "Reference to the schedule column"
+        },
+        "row_position": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Original row position. Preserved for traceability."
+        },
+        "column_position": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Original column position. Preserved for traceability."
+        },
+        "cell_value": {
+          "type": "string",
+          "description": "Schedule indicator (clean). Empty string for no data."
+        },
+        "cell_value_type": {
+          "type": "string",
+          "enum": [
+            "marker",
+            "timing_text",
+            "frequency",
+            "continuation",
+            "conditional",
+            "empty",
+            "other"
+          ],
+          "description": "Classification of cell content. Derived during resolution. 'marker'=X,✓,•; 'timing_text'=Week 4, Day 1-3; 'frequency'=Daily, PRN; 'continuation'=→, ...; 'conditional'=if/as needed; 'empty'=no data."
+        },
+        "source_range": {
+          "type": "string",
+          "description": "If from merged cell expansion, original column range. Preserved from extraction."
+        },
+        "annotation_markers": {
+          "type": "string",
+          "description": "Annotation markers on this cell. Preserved from extraction."
+        },
+        "linked_annotation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^annot-[0-9]{3}$"
+          },
+          "description": "IDs of annotations linked to this cell. Derived by matching annotation_markers."
+        }
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "description": "A resolved annotation with stable ID and explicit element cross-references.",
+      "allOf": [
+        {
+          "if": {"properties": {"annotation_type": {"const": "placeholder"}}, "required": ["annotation_type"]},
+          "then": {"required": ["placeholder_reason"], "properties": {"annotation_text": {"const": ""}}},
+          "else": {"not": {"required": ["placeholder_reason"]}}
+        }
+      ],
+      "required": [
+        "annotation_id",
+        "table_id",
+        "annotation_marker",
+        "annotation_type",
+        "annotation_text",
+        "referenced_elements"
+      ],
+      "properties": {
+        "annotation_id": {
+          "type": "string",
+          "pattern": "^annot-[0-9]{3}$",
+          "description": "Stable identifier for this annotation (e.g., 'annot-001'). Generated sequentially."
+        },
+        "table_id": {
+          "type": "string",
+          "pattern": "^table-[0-9]{3}$",
+          "description": "Reference to containing table"
+        },
+        "annotation_marker": {
+          "type": "string",
+          "description": "The marker symbol. Preserved from extraction."
+        },
+        "annotation_type": {
+          "type": "string",
+          "enum": [
+            "footnote",
+            "legend",
+            "abbreviation",
+            "source_note",
+            "continuation_note",
+            "placeholder"
+          ],
+          "description": "Annotation classification. Preserved from extraction unless retyped at resolve (see annotation_type_source). 'placeholder'=a marker with no protocol text behind it (see placeholder_reason); annotation_text is empty."
+        },
+        "annotation_type_source": {
+          "type": "object",
+          "description": "Present only when resolve overrode the extracted annotation_type (*_source idiom, exception-based). 'legend_pattern' = the text matched the abbreviation-legend density rule (X=Y; Z=...) and was retyped legend.",
+          "required": ["method", "extracted_type"],
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": ["legend_pattern"],
+              "description": "How the type was overridden. 'legend_pattern' = the text matched the abbreviation-legend density rule."
+            },
+            "extracted_type": {
+              "type": "string",
+              "description": "The annotation_type as recorded in the extraction file."
+            }
+          }
+        },
+        "placeholder_reason": {
+          "type": "string",
+          "enum": ["redacted", "not_printed", "reviewer_note"],
+          "description": "Present exactly when annotation_type is 'placeholder': why the marker has no protocol text. 'redacted'=the text is covered by a redaction box; 'not_printed'=the marker is printed but its definition is not printed in the source; 'reviewer_note'=a marker synthesized to carry a reviewer's note (the note is in review_note)."
+        },
+        "review_note": {
+          "type": "string",
+          "description": "Text that is not protocol text: a probable equivalent from another table or protocol, a reviewer's finding. Shown on review pages, never read as SoA content (not in grain inputs). Set through a corrections sidecar."
+        },
+        "annotation_text": {
+          "type": "string",
+          "description": "Full annotation text. Preserved from extraction."
+        },
+        "document_references": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Numbered targets in the protocol document that the annotation text points at ('See Section 8.2.2', 'refer to Appendix 3', 'see Table 4'), read from the text only; whether the target can be found in the protocol text is not stated here. A list gives one entry per number; a reviewer note (text starting 'Reviewer note' or 'Footnote not printed in the source') has none. Present only when there is one. From 1.2.",
+          "items": {
+            "type": "object",
+            "required": ["kind", "target"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {"type": "string", "enum": ["section", "appendix", "attachment", "table", "figure"], "description": "What the note points at"},
+              "target": {"type": "string", "description": "Its number or letter as printed, e.g. '8.2.2', 'C', '5.1-1'"}
+            }
+          }
+        },
+        "annotation_scope": {
+          "type": "string",
+          "enum": [
+            "table",
+            "column",
+            "activity",
+            "cell",
+            "multiple"
+          ],
+          "description": "Scope of what this annotation qualifies. Derived from referenced_elements. 'table'=applies to entire table; 'column'=specific timepoint(s); 'activity'=specific activity(ies); 'cell'=specific intersections; 'multiple'=mixed scope."
+        },
+        "referenced_elements": {
+          "type": "object",
+          "description": "Explicit cross-references to elements this annotation qualifies. Derived from marker_locations in extraction.",
+          "properties": {
+            "property_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^prop-[0-9]{3}$"
+              },
+              "description": "Schedule properties this annotation is attached to"
+            },
+            "column_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^col-[0-9]{3}$"
+              },
+              "description": "Schedule columns this annotation is attached to"
+            },
+            "activity_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^act-[0-9]{3}$"
+              },
+              "description": "Activities this annotation is attached to"
+            },
+            "cell_references": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["activity_id", "column_id"],
+                "properties": {
+                  "activity_id": {
+                    "type": "string",
+                    "pattern": "^act-[0-9]{3}$",
+                    "description": "Activity (row) of the cell."
+                  },
+                  "column_id": {
+                    "type": "string",
+                    "pattern": "^col-[0-9]{3}$",
+                    "description": "Schedule column of the cell."
+                  }
+                }
+              },
+              "description": "Specific activity × column cells this annotation is attached to"
+            }
+          }
+        },
+        "marker_locations": {
+          "type": "array",
+          "description": "Original marker locations. Preserved from extraction for traceability.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "location_type": {
+                "type": "string",
+                "description": "What type of element the marker appears in (schedule_property, activity_name, schedule_cell, unresolved), as in the extraction."
+              },
+              "row_position": {
+                "type": "integer",
+                "description": "Row position where marker appears"
+              },
+              "column_position": {
+                "type": "integer",
+                "description": "Column position. Present for a marker on a specific cell."
+              }
+            }
+          }
+        }
+      }
+    },
+    "resolution_metadata": {
+      "type": "object",
+      "description": "Metadata about the resolution process. Tracks provenance from extraction through resolution.",
+      "required": [
+        "resolved_at",
+        "resolver",
+        "source_extraction",
+        "resolution_status"
+      ],
+      "properties": {
+        "resolved_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of resolution"
+        },
+        "resolver": {
+          "type": "string",
+          "description": "Tool or person who performed resolution. E.g., 'soa-resolver-v1.0', 'Manual-KL'"
+        },
+        "source_extraction": {
+          "type": "object",
+          "description": "Reference to source extraction file",
+          "required": [
+            "schema_name",
+            "schema_version",
+            "extraction_file"
+          ],
+          "properties": {
+            "schema_name": {
+              "type": "string",
+              "const": "soa-table-extraction",
+              "description": "Schema of the source file."
+            },
+            "schema_version": {
+              "type": "string",
+              "description": "schema_version of the source extraction file."
+            },
+            "extraction_file": {
+              "type": "string",
+              "description": "Filename of source extraction JSON"
+            },
+            "extraction_status": {
+              "type": "string",
+              "description": "Status of source extraction when resolution was performed"
+            }
+          }
+        },
+        "validation_results": {
+          "type": "object",
+          "description": "Results of validation checks performed during resolution",
+          "properties": {
+            "structure_valid": {
+              "type": "boolean",
+              "description": "All row/column positions consistent and complete"
+            },
+            "hierarchy_valid": {
+              "type": "boolean",
+              "description": "All parent-child relationships form valid trees"
+            },
+            "annotations_valid": {
+              "type": "boolean",
+              "description": "All annotation markers resolved to annotation definitions"
+            },
+            "validation_warnings": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Non-fatal issues detected during validation"
+            },
+            "validation_errors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Fatal issues that must be addressed"
+            }
+          }
+        },
+        "resolution_status": {
+          "type": "string",
+          "enum": [
+            "resolved",
+            "resolved_with_warnings",
+            "failed"
+          ],
+          "description": "Outcome of resolution. 'resolved'=complete, no issues; 'resolved_with_warnings'=complete but has warnings; 'failed'=could not resolve, see errors."
+        },
+        "ready_for_integration": {
+          "type": "boolean",
+          "description": "true if this resolved table is ready for multi-table integration in study-schedule-logic layer"
+        },
+        "resolution_notes": {
+          "type": "string",
+          "description": "Notes about resolution decisions or issues encountered"
+        }
+      }
+    },
+    "extraction_metadata_preserved": {
+      "type": "object",
+      "description": "Original extraction metadata preserved for full provenance chain",
+      "properties": {
+        "extracted_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of extraction"
+        },
+        "extractor": {
+          "type": "string",
+          "description": "Tool, model, or person who performed extraction. E.g., 'Claude-3.5-Sonnet', 'Manual-KL'"
+        },
+        "source_document": {
+          "type": "object",
+          "description": "Source document identification"
+        },
+        "verification": {
+          "type": "object",
+          "description": "Verification checkpoint information"
+        },
+        "extraction_status": {
+          "type": "string",
+          "description": "Workflow status. 'draft'=initial extraction, may have errors; 'verified'=human-verified against source; 'ready_for_resolution'=complete and ready for soa-table-resolved processing."
+        },
+        "extraction_notes": {
+          "type": "string",
+          "description": "General notes about extraction decisions, ambiguities encountered, or issues for downstream attention"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "properties": {
+    "schema_name": {
+      "type": "string",
+      "const": "soa-table-resolved",
+      "description": "Schema identifier for pipeline routing"
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0", "1.1", "1.2", "1.3"],
+      "description": "Schema version. 1.1 adds property_type 'visit_attribute'. 1.2 adds document_references on an annotation. 1.3 adds annotation_type 'placeholder' with placeholder_reason, and review_note, on an annotation. Files stamped 1.0 to 1.2 remain valid."
+    },
+    "resolution_metadata": {
+      "$ref": "#/definitions/resolution_metadata",
+      "description": "Metadata about the resolution process"
+    },
+    "extraction_metadata": {
+      "$ref": "#/definitions/extraction_metadata_preserved",
+      "description": "Original extraction metadata preserved for provenance"
+    },
+    "table_metadata": {
+      "$ref": "#/definitions/table_metadata",
+      "description": "Enhanced table metadata with table_id and derived counts"
+    },
+    "schedule_properties": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/schedule_property"
+      },
+      "description": "Resolved schedule properties with IDs and hierarchy relationships"
+    },
+    "schedule_columns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/schedule_column"
+      },
+      "description": "Resolved schedule columns - the temporal dimension made explicit with composite values"
+    },
+    "activities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/activity"
+      },
+      "description": "Resolved activities with IDs and parent-child relationships"
+    },
+    "activity_schedule": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/activity_schedule_value"
+      },
+      "description": "Schedule values now using ID references instead of just positions"
+    },
+    "annotations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/annotation"
+      },
+      "description": "Resolved annotations with IDs and explicit element cross-references"
+    },
+    "review_items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/review_item"
+      },
+      "description": "Open judgement calls carried unchanged from the extraction. Present only when the extraction carried them."
+    }
+  },
+  "required": [
+    "schema_name",
+    "schema_version",
+    "resolution_metadata",
+    "extraction_metadata",
+    "table_metadata",
+    "schedule_properties",
+    "schedule_columns",
+    "activities",
+    "activity_schedule",
+    "annotations"
+  ],
+  "additionalProperties": false
+}

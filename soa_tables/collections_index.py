@@ -1,0 +1,155 @@
+"""
+Collections Root Index Generator
+
+Generates the landing index.html at the collections repository root (the
+parent of COLLECTIONS_ROOT), one card per discovered collection. Card title
+and description come from each collection's collection.json descriptor;
+counts and links are discovered from the collection's outputs. Adding a
+collection therefore never requires editing hand-written HTML.
+"""
+
+from datetime import datetime, timezone
+
+from .base import PipelineStepBase
+from . import config
+from .index_generator import esc, load_study_metadata
+
+
+def generate_collections_index_html() -> str:
+    """Build the root landing page HTML across all discovered collections."""
+    root = config.COLLECTIONS_ROOT.parent
+    cards = []
+    # usdm_data (the reference collection) always first, the rest alphabetical
+    names = sorted((n for n in config.COLLECTIONS if n != "fixtures"),
+                   key=lambda n: (n != "usdm_data", n))
+    for name in names:
+        descriptor = config.load_collection_descriptor(name)
+        collection_path = config.get_collection_path(name)
+        rel = collection_path.relative_to(root).as_posix()
+        # Studies the manifest marks not extractable are not outstanding work,
+        # so they are not counted here either -- same rule as the collection
+        # index, and it keeps the count independent of which source PDFs happen
+        # to be present in this working tree.
+        study_meta = load_study_metadata(collection_path)
+        excluded = {k for k, m in study_meta.items()
+                    if str(m.get('excluded_reason') or '').strip()}
+        total = len([p for p in config.list_protocols(name) if p not in excluded])
+        processed = len(config.list_ready_protocols(name))
+        title = descriptor.get("title", name)
+        description = descriptor.get("description", "")
+        links = [f'<a href="{rel}/index.html">Collection index &rarr;</a>']
+        if (collection_path / "activities.html").exists():
+            links.append(f'<a href="{rel}/activities.html">Activities inventory &rarr;</a>')
+        cards.append(f'''  <div class="panel card">
+    <h3><a href="{rel}/index.html">{esc(title)}</a></h3>
+    {f'<p>{esc(description)}</p>' if description else ''}
+    <p class="counts"><b>{total}</b> protocols &middot; <b>{processed}</b> processed</p>
+    <p class="links">{' '.join(links)}</p>
+  </div>''')
+
+    generated_at = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+    cards_html = '\n'.join(cards)
+    return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoA2USDM Collections</title>
+<style>
+  :root {{ --blue:#1F4788; --blue2:#2E75B6; --ink:#1f2933; --muted:#5f6b7a; --line:#d9dee5; --bg:#f5f7fa; }}
+  * {{ box-sizing:border-box; }}
+  body {{ margin:0; font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+         color:var(--ink); background:var(--bg); }}
+  header {{ background:var(--blue); color:#fff; padding:14px 22px; }}
+  header h1 {{ margin:0; font-size:20px; font-weight:600; }}
+  header .sub {{ opacity:.85; font-size:13px; margin-top:3px; }}
+  main {{ max-width:860px; margin:0 auto; padding:18px 22px 10px; }}
+  h2 {{ font-size:13px; font-weight:600; margin:22px 0 8px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }}
+  a {{ color:var(--blue2); text-decoration:none; }}
+  a:hover {{ text-decoration:underline; }}
+  code {{ font:12px ui-monospace,"SF Mono",Menlo,monospace; }}
+  ul {{ padding-left:1.2rem; margin:0; }}
+  li {{ margin:.3rem 0; }}
+  .panel {{ background:#fff; border:1px solid var(--line); border-radius:6px; padding:12px 16px; margin:0 0 10px; }}
+  .card h3 {{ margin:0 0 4px; font-size:16px; font-weight:600; }}
+  .card p {{ margin:4px 0; font-size:13px; }}
+  .card .counts {{ color:var(--muted); }}
+  .card .links a {{ margin-right:16px; font-weight:600; }}
+  .note {{ color:var(--muted); font-size:13px; }}
+  footer {{ max-width:860px; margin:0 auto; padding:12px 22px 24px; color:var(--muted); font-size:12px; }}
+</style>
+</head>
+<body>
+  <header>
+    <h1>SoA2USDM Collections</h1>
+    <div class="sub">Machine-actionable Schedule of Activities (SoA) extractions from clinical trial protocols</div>
+  </header>
+  <main>
+  <p>This repository holds SoA extraction, resolution, and consolidation outputs produced with the
+     <a href="https://github.com/kerfors/soa2usdm">soa2usdm</a> pipeline, organised as collections of studies.
+     Full protocol PDFs are not stored here: each protocol links to its source, and only its SoA pages are
+     published (an excerpt PDF and the rendered page images).</p>
+  <p>An introduction to SoA2USDM, with two short videos and the schemas on one page, is at
+     <a href="https://kerfors.github.io/soa2usdm/">kerfors.github.io/soa2usdm</a>.</p>
+
+  <h2>Collections</h2>
+{cards_html}
+
+  <p class="note">Each collection index is generated by the pipeline (from
+     <code>studies_protocols.xlsx</code> plus discovered outputs) and is the single source of truth for the study
+     list, per-layer pipeline status, and links to each protocol's source, extraction data, consolidated SoA,
+     review page and extraction log.</p>
+
+  <h2>Pipeline layers</h2>
+  <div class="panel">
+  <ul>
+    <li><strong>Layer&nbsp;1 &mdash; Extraction:</strong> SoA table(s) transcribed from the protocol PDF to
+        <code>soa-table-extraction</code> JSON (single-pass),
+        ending with an extraction log of every judgement call.</li>
+    <li><strong>Corrections:</strong> human review findings applied as an auditable sidecar
+        (<code>*_corrections.json</code>) &mdash; the raw extraction is never overwritten.</li>
+    <li><strong>Layer&nbsp;2 &mdash; Resolve:</strong> IDs, hierarchy, and relationships derived per table.</li>
+    <li><strong>Layer&nbsp;3 &mdash; Consolidate:</strong> cross-table integration, activity matching, annotation dedup.</li>
+    <li><strong>Review page:</strong> the extraction drawn on its source pages, with the open decisions as a worklist.</li>
+    <li><strong>Consolidated view:</strong> the unified SoA across tables, with each annotation marked where it applies.</li>
+  </ul>
+  </div>
+  <p class="note"><strong>USDM Instantiation</strong> &mdash; turning one protocol's consolidated SoA into a USDM v4
+     document &mdash; is a documented manual step, not a pipeline layer; see the
+     <a href="https://github.com/kerfors/soa2usdm">soa2usdm</a> repository.</p>
+  </main>
+
+  <footer>
+    Generated {generated_at} by <code>soa_tables.collections_index</code>.
+    Built iteratively with Claude (Anthropic). Content under CC-BY-4.0.
+  </footer>
+</body>
+</html>'''
+
+
+class CollectionsIndexStep(PipelineStepBase):
+    """Generate the collections-repo root index.html (all collections)."""
+
+    step_name = "collections_index"
+
+    def execute(self, data: dict) -> dict:
+        try:
+            html = generate_collections_index_html()
+            output_file = config.COLLECTIONS_ROOT.parent / "index.html"
+            output_file.write_text(html, encoding="utf-8")
+            self._analytics.increment("collections_index_generated")
+            return {"output_file": str(output_file), "status": "success"}
+        except Exception as e:
+            self._log_error(f"Collections index generation failed: {e}")
+            return {"output_file": None, "status": "failed", "error": str(e)}
+
+
+def main():
+    html = generate_collections_index_html()
+    output_file = config.COLLECTIONS_ROOT.parent / "index.html"
+    output_file.write_text(html, encoding="utf-8")
+    print(f"Wrote {output_file}")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soa-tables"
+version = "0.1.0"
+description = "Extract Schedule of Activities (SoA) tables from clinical trial protocols into reviewed, consolidated, structured data."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+notebooks = ["pandas", "requests", "pymupdf", "pymupdf4llm", "openpyxl"]
+# Page geometry (soa_tables.page_grid, soa_tables.row_audit) also needs poppler
+# on PATH: pdftoppm, pdftotext, pdfinfo.
+bands = ["numpy"]
+# Collection index and activity inventory: the study manifest (studies_protocols.xlsx) and the
+# rendered extraction logs. Both fail loudly without these.
+index = ["openpyxl", "markdown"]
+test = ["pytest"]
+
+[project.scripts]
+soa-tables-activities = "soa_tables.activity_inventory:main"
+soa-tables-row-audit = "soa_tables.row_audit:main"
+soa-tables-review-page = "soa_tables.review_page:main"
+
+[tool.setuptools]
+packages = ["soa_tables"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

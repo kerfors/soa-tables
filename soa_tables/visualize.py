@@ -1,0 +1,1671 @@
+"""
+Visualize Step
+
+Generates HTML visualization from consolidated JSON files (Layer 3).
+
+Features:
+- Property Hierarchy Comparison with per-table comments shown
+- Frozen columns for Activity and In columns
+- Population-specific coloring for track segments
+"""
+
+import json
+import html as html_lib
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
+from collections import defaultdict
+from dataclasses import dataclass
+
+from .base import PipelineStepBase
+from . import config
+from .consolidation_corrections import corrections_path
+from .nav import NAV_CSS, nav_block, page_title
+from .placeholders import display_text
+
+
+# =============================================================================
+# Color Scheme
+# =============================================================================
+
+LEVEL_COLORS = ['#1F4788', '#2E75B6', '#6A9BD1', '#A9C6E6', '#D2E1F2', '#EBF2FA']
+
+POPULATION_PALETTE = [
+    ('#28a745', '#d4edda', '#28a745'),  # Green
+    ('#dc3545', '#f8d7da', '#dc3545'),  # Red
+    ('#17a2b8', '#d1ecf1', '#17a2b8'),  # Teal
+    ('#fd7e14', '#ffe5d0', '#fd7e14'),  # Orange
+    ('#6f42c1', '#e2d9f3', '#6f42c1'),  # Purple
+    ('#20c997', '#d2f4ea', '#20c997'),  # Cyan
+]
+
+COLORS = {
+    'header': '#1F4788',
+    'metadata': '#1F4788',
+    'tables': '#5B9BD5',
+    'properties': '#70AD47',
+    'activities': '#C65911',
+    'schedule': '#7030A0',
+    'pop_default': '#6c757d',
+    'cell_common': '#BDD7EE',
+    'cell_data': '#BDD7EE',
+    'match_exact': '#ffffff',
+    'match_fuzzy': '#e1f2fb',
+    'match_cross': '#f1e7f7',
+    'match_single': '#ffffff',
+    'qualifier_bg': '#f5f5f5',
+    'qualifier_text': '#666',
+}
+
+
+class PopulationColorMapper:
+    """Assigns colors to population tracks dynamically."""
+    
+    def __init__(self):
+        self._track_to_index: Dict[str, int] = {}
+        self._next_index = 0
+    
+    def get_colors(self, track: Optional[str]) -> tuple:
+        if not track:
+            return (COLORS['pop_default'], COLORS['cell_data'], '#333')
+        if track not in self._track_to_index:
+            self._track_to_index[track] = self._next_index
+            self._next_index += 1
+        idx = self._track_to_index[track] % len(POPULATION_PALETTE)
+        return POPULATION_PALETTE[idx]
+    
+    def get_header_color(self, track: Optional[str]) -> str:
+        return self.get_colors(track)[0]
+    
+    def get_cell_color(self, track: Optional[str]) -> str:
+        return self.get_colors(track)[1]
+    
+    def get_text_color(self, track: Optional[str]) -> str:
+        return self.get_colors(track)[2]
+    
+    def get_track_list(self) -> List[tuple]:
+        return [(track, *self.get_colors(track)[:2]) 
+                for track in sorted(self._track_to_index.keys(), 
+                                   key=lambda t: self._track_to_index[t])]
+
+
+# =============================================================================
+# Navigation
+# =============================================================================
+
+@dataclass
+class NavContext:
+    """Navigation context for consolidated HTML pages."""
+    protocol_id: str
+    collection: str
+    all_tables: list  # List of (table_num, html_filename)
+
+
+def gen_navigation(nav) -> str:
+    """Shared breadcrumb + sibling strip (soa_tables.nav) for the consolidated view.
+
+    The strip's resolved links replace the local T-buttons this page used to
+    render, and add review / extraction log / extraction data — every sibling
+    page of the protocol, from one shared generator.
+    """
+    if nav is None:
+        return ''
+    return nav_block(nav.collection, nav.protocol_id, 'Consolidated SoA',
+                     depth=3, current=('consolidated', None))
+
+
+def get_level_color(level: int) -> str:
+    idx = min(level - 1, len(LEVEL_COLORS) - 1)
+    return LEVEL_COLORS[max(0, idx)]
+
+def get_level_text_color(level: int) -> str:
+    return 'white' if level <= 2 else '#333'
+
+MATCH_LABELS = {
+    'exact': 'same name',
+    'fuzzy_auto': 'near match, accepted',
+    'fuzzy_review': 'near match, to review',
+    'fuzzy_cross_parent': 'near match, different parent',
+    'decision': 'merged by decision',
+    'new': 'one table',
+}
+
+
+def get_match_label(status: str) -> str:
+    return MATCH_LABELS[status]
+
+
+def get_match_color(status: str, table_count: int) -> str:
+    if table_count == 1:
+        return COLORS['match_single']
+    if status == 'fuzzy_cross_parent':
+        return COLORS['match_cross']
+    if 'fuzzy' in status:
+        return COLORS['match_fuzzy']
+    return COLORS['match_exact']
+
+
+# =============================================================================
+# HTML Utilities
+# =============================================================================
+
+def esc(text) -> str:
+    return html_lib.escape(str(text)) if text else ""
+
+def format_value(value, trace: bool = False) -> str:
+    cls = 'trace' if trace else 'data'
+    if value is None:
+        return f'<span class="{cls} null">null</span>'
+    elif isinstance(value, bool):
+        return f'<span class="{cls} bool">{str(value).lower()}</span>'
+    elif isinstance(value, (int, float)):
+        return f'<span class="{cls}">{value}</span>'
+    elif isinstance(value, str):
+        return f'<span class="{cls}">{esc(value)}</span>'
+    elif isinstance(value, list):
+        return f'<span class="{cls} arr">[{len(value)}]</span>'
+    elif isinstance(value, dict):
+        return f'<span class="{cls} obj">{{...}}</span>'
+    return f'<span class="{cls}">{esc(str(value))}</span>'
+
+
+# =============================================================================
+# Component View Generators
+# =============================================================================
+
+def gen_metadata_component(data: dict) -> str:
+    """Generate Consolidation Metadata component."""
+    meta = data.get('consolidation_metadata', {})
+    
+    rows = []
+    fields = ['consolidated_at', 'source_activity_count', 'unified_activity_count', 'compression_percent']
+    for f in fields:
+        if f in meta:
+            rows.append(f'<tr><td class="field">{f}</td><td>{format_value(meta[f])}</td></tr>')
+    
+    stats = meta.get('match_stats', {})
+    if stats:
+        stats_str = ", ".join(f"{k}: {v}" for k, v in stats.items() if v > 0)
+        rows.append(f'<tr><td class="field">match_stats</td><td>{esc(stats_str)}</td></tr>')
+    
+    return f'''
+    <div class="comp">
+        <div class="comp-header collapsible" style="background: {COLORS['metadata']};" onclick="toggleSection(this)">
+            <span class="comp-title"><span class="toggle-icon">▼</span> Consolidation Metadata</span>
+            <span class="comp-desc">Process information</span>
+        </div>
+        <div class="comp-body">
+            <table class="comp-table"><tbody>{''.join(rows)}</tbody></table>
+        </div>
+    </div>'''
+
+
+def gen_tables_component(data: dict, pop_colors: PopulationColorMapper) -> str:
+    """Generate Source Tables component."""
+    tables = data.get('consolidation_metadata', {}).get('source_tables', [])
+    
+    rows = []
+    for t in tables:
+        tnum = t.get('table_num', '')
+        ttype = t.get('table_type', '')
+        track = t.get('track_label', '')
+        
+        # Color the track label with population colors
+        if track:
+            bg_color = pop_colors.get_header_color(track)
+            track_display = f'<span class="track-label" style="background: {bg_color}; color: white;">{esc(track)}</span>'
+        else:
+            track_display = ''
+        
+        title = t.get('table_title', '')
+        purpose = t.get('table_purpose', '')
+        title_purpose = f"{esc(title)}"
+        if purpose:
+            title_purpose += f"<br/><span class='purpose-text'>{esc(purpose)}</span>"
+        
+        rows.append(f'''<tr>
+            <td class="id">T{tnum}</td>
+            <td class="type">{ttype}</td>
+            <td>{track_display}</td>
+            <td class="title-full">{title_purpose}</td>
+            <td class="trace">{t.get('activity_count', '')}</td>
+            <td class="trace">{t.get('column_count', '')}</td>
+            <td class="trace">{len(t.get('property_hierarchy', []))}</td>
+        </tr>''')
+    
+    return f'''
+    <div class="comp">
+        <div class="comp-header collapsible" style="background: {COLORS['tables']};" onclick="toggleSection(this)">
+            <span class="comp-title"><span class="toggle-icon">▼</span> Source Tables</span>
+            <span class="comp-desc">{len(tables)} tables</span>
+        </div>
+        <div class="comp-body">
+            <table class="comp-table">
+                <thead><tr>
+                    <th>table</th><th>type</th><th>track</th><th>title / purpose</th><th>acts</th><th>cols</th><th>props</th>
+                </tr></thead>
+                <tbody>{''.join(rows)}</tbody>
+            </table>
+        </div>
+    </div>'''
+
+
+def gen_property_comparison_component(data: dict) -> str:
+    """Generate Property Hierarchy Comparison with per-table comments shown.
+    
+    Only compares main timeline tables (main_soa, continuation, subsidiary).
+    Track, domain, and reference tables have different structures by design.
+    Separates hierarchical properties from column qualifiers.
+    """
+    tables = data.get('consolidation_metadata', {}).get('source_tables', [])
+    
+    # Only compare main timeline tables - track/domain/reference have different structures by design
+    tables = [t for t in tables if t.get('table_type') in ('main_soa', 'continuation', 'subsidiary')]
+    
+    if len(tables) < 2:
+        return ''
+    
+    # Find max hierarchical level (excluding None/qualifiers)
+    max_level = 0
+    has_qualifiers = False
+    for t in tables:
+        props = t.get('property_hierarchy', [])
+        for p in props:
+            level = p.get('hierarchical_level')
+            if level is not None:
+                max_level = max(max_level, level)
+            else:
+                has_qualifiers = True
+    
+    if max_level == 0 and not has_qualifiers:
+        return ''
+    
+    header_cells = '<th>Level</th>'
+    for t in tables:
+        tnum = t.get('table_num', '')
+        ttype = t.get('table_type', '')
+        track = t.get('track_label', '')
+        label = f"T{tnum}"
+        if track:
+            label += f"<br/><span class='track-small'>{esc(track)}</span>"
+        header_cells += f'<th class="table-col" title="{esc(ttype)}">{label}</th>'
+    header_cells += '<th class="conclusion-col">Conclusion</th>'
+    
+    rows = []
+    
+    # Hierarchical levels first
+    for level in range(1, max_level + 1):
+        bg_color = get_level_color(level)
+        text_color = get_level_text_color(level)
+        
+        row_cells = f'<td class="level-cell" style="background: {bg_color}; color: {text_color};">L{level}</td>'
+        
+        level_props = []
+        for t in tables:
+            props = t.get('property_hierarchy', [])
+            prop_at_level = None
+            for p in props:
+                if p.get('hierarchical_level') == level:
+                    prop_at_level = p
+                    break
+            level_props.append(prop_at_level)
+            
+            if prop_at_level:
+                pname = prop_at_level.get('property_name', '')
+                ptype = prop_at_level.get('property_type', '')
+                pcomment = prop_at_level.get('property_comment', '')
+                
+                comment_display = pcomment  # Full comment, no truncation
+                
+                cell_content = f'''<div class="prop-cell-content">
+                    <div class="prop-name">{esc(pname) if pname else '<em>(implicit)</em>'}</div>
+                    <div class="prop-type">[{ptype}]</div>
+                    <div class="prop-comment">{esc(comment_display)}</div>
+                </div>'''
+                row_cells += f'<td class="prop-data" style="background: {bg_color}; color: {text_color};" title="{esc(pcomment)}">{cell_content}</td>'
+            else:
+                row_cells += '<td class="prop-empty">—</td>'
+        
+        present = [p for p in level_props if p is not None]
+        if not present:
+            conclusion = '<span class="conc-empty">—</span>'
+        elif len(present) == len(tables):
+            types = set(p.get('property_type', '') for p in present)
+            names = set(p.get('property_name', '') for p in present)
+            if len(types) == 1 and len(names) == 1:
+                conclusion = '<span class="conc-match">✓ Identical</span>'
+            elif len(types) == 1:
+                conclusion = '<span class="conc-similar">≈ Same type</span>'
+            else:
+                conclusion = '<span class="conc-differ">≠ Differs</span>'
+        else:
+            conclusion = f'<span class="conc-partial">{len(present)}/{len(tables)} tables</span>'
+        
+        row_cells += f'<td class="conclusion-cell">{conclusion}</td>'
+        rows.append(f'<tr>{row_cells}</tr>')
+    
+    # Column Qualifiers section (properties with null hierarchical_level)
+    if has_qualifiers:
+        # Collect all unique qualifier types across tables
+        qualifier_types = set()
+        for t in tables:
+            props = t.get('property_hierarchy', [])
+            for p in props:
+                if p.get('hierarchical_level') is None:
+                    qualifier_types.add(p.get('property_type', 'other'))
+        
+        if qualifier_types:
+            # Section divider
+            rows.append(f'<tr><td colspan="{len(tables) + 2}" style="background: #e9ecef; padding: 6px 10px; font-size: 10px; font-weight: 600; color: #666;">Column Qualifiers</td></tr>')
+            
+            for qtype in sorted(qualifier_types):
+                row_cells = f'<td class="level-cell" style="background: {COLORS["qualifier_bg"]}; color: {COLORS["qualifier_text"]};">—</td>'
+                
+                type_props = []
+                for t in tables:
+                    props = t.get('property_hierarchy', [])
+                    prop_of_type = None
+                    for p in props:
+                        if p.get('hierarchical_level') is None and p.get('property_type') == qtype:
+                            prop_of_type = p
+                            break
+                    type_props.append(prop_of_type)
+                    
+                    if prop_of_type:
+                        pname = prop_of_type.get('property_name', '')
+                        pcomment = prop_of_type.get('property_comment', '')
+                        
+                        cell_content = f'''<div class="prop-cell-content">
+                            <div class="prop-name">{esc(pname) if pname else '<em>(implicit)</em>'}</div>
+                            <div class="prop-type">[{qtype}]</div>
+                            <div class="prop-comment" style="color: #555;">{esc(pcomment)}</div>
+                        </div>'''
+                        row_cells += f'<td class="prop-data" style="background: {COLORS["qualifier_bg"]}; color: {COLORS["qualifier_text"]};" title="{esc(pcomment)}">{cell_content}</td>'
+                    else:
+                        row_cells += '<td class="prop-empty">—</td>'
+                
+                present = [p for p in type_props if p is not None]
+                if not present:
+                    conclusion = '<span class="conc-empty">—</span>'
+                elif len(present) == len(tables):
+                    conclusion = '<span class="conc-match">✓ All tables</span>'
+                else:
+                    conclusion = f'<span class="conc-partial">{len(present)}/{len(tables)} tables</span>'
+                
+                row_cells += f'<td class="conclusion-cell">{conclusion}</td>'
+                rows.append(f'<tr>{row_cells}</tr>')
+    
+    return f'''
+    <div class="comp">
+        <div class="comp-header collapsible" style="background: {COLORS['properties']};" onclick="toggleSection(this)">
+            <span class="comp-title"><span class="toggle-icon">▼</span> Property Hierarchy Comparison</span>
+            <span class="comp-desc">{len(tables)} main timeline tables, {max_level} levels max</span>
+        </div>
+        <div class="comp-body">
+            <p class="comp-note">Compares main timeline tables only (main_soa, continuation, subsidiary). Track, domain, and reference tables excluded — different structure by design.</p>
+            <table class="comp-table prop-comparison">
+                <thead><tr>{header_cells}</tr></thead>
+                <tbody>{''.join(rows)}</tbody>
+            </table>
+        </div>
+    </div>'''
+
+
+# A 'See ...' source note starting like this, or naming one of these anywhere,
+# points into the protocol body or at a figure, not at a table.
+BODY_REFERENCE_PREFIXES = ('see section', 'see appendix', 'see attachment', 'see figure')
+BODY_REFERENCE_WORDS = ('attachment', 'appendix')
+
+
+def mark_differences(name: str, other: str) -> str:
+    """The name as HTML, with every word that the other name does not print
+    marked. Words are compared as printed (case and punctuation included), so
+    the difference a similarity score hides is the one shown."""
+    other_words = set(other.split())
+    return ' '.join(esc(w) if w in other_words else f"<mark class='diff'>{esc(w)}</mark>"
+                    for w in name.split())
+
+
+def build_matches_model(data: dict, row_names: dict, corrections_doc: Optional[dict]) -> dict:
+    """What the 'Matches across tables' section shows and drafts from.
+
+    row_names maps (table_number, activity_id) to the row's activity_name in its
+    resolved table: a sidecar entry names source rows, and a source reference in
+    the consolidated file carries no name of its own. corrections_doc is the
+    protocol's consolidation corrections sidecar, when it has one.
+
+    items: every cross-table match a reviewer can decide — a source row merged on
+    a fuzzy score or by a decision ('merged'), a row split off by a decision
+    ('split'), and a near match kept separate ('separate'). Same set as
+    consolidation_metadata.review_stats. An item is decided when it carries a
+    decision; the sidecar entry gives reason, by and at.
+    """
+    entries = {c['id']: c for c in corrections_doc['corrections']} if corrections_doc else {}
+    activities = data['unified_activities']
+    by_xact = {ua['xact_id']: ua for ua in activities}
+    tables = data['consolidation_metadata']['source_tables']
+
+    def row(ref: dict) -> dict:
+        return {'table_number': ref['table_num'], 'activity_id': ref['activity_id'],
+                'activity_name': row_names[(ref['table_num'], ref['activity_id'])]}
+
+    def decided(decision: Optional[dict]) -> Optional[dict]:
+        if not decision:
+            return None
+        entry = entries[decision['correction_id']]
+        return {**decision, 'reason': entry['reason'], 'by': entry['by'], 'at': entry['at']}
+
+    items = []
+    for ua in activities:
+        creator = ua['source_refs'][0]
+        for ref in ua['source_refs']:
+            if 'fuzzy' not in ref['match_status'] and 'decision' not in ref:
+                continue
+            split = ref is creator
+            items.append({
+                'kind': 'split' if split else 'merged',
+                'xact_id': ua['xact_id'],
+                'source': row(ref),
+                'target': entries[ref['decision']['correction_id']]['target'] if split else row(creator),
+                'status': ref['match_status'],
+                'score': None if split else ref['match_confidence'],
+                'decision': decided(ref.get('decision')),
+            })
+        for hint in ua.get('near_matches', []):
+            source_ref = next(r for r in ua['source_refs'] if r['table_num'] == hint['table_num'])
+            items.append({
+                'kind': 'separate',
+                'xact_id': ua['xact_id'],
+                'source': row(source_ref),
+                'target': row(by_xact[hint['xact_id']]['source_refs'][0]),
+                'target_xact_id': hint['xact_id'],
+                'status': 'near_match',
+                'score': hint['score'],
+                'decision': decided(hint.get('decision')),
+            })
+
+    # 'refines' relations already stated in the sidecar, by the row they detail.
+    relations = []
+    for ua in activities:
+        for r in ua.get('refined_by', []):
+            entry = entries[r['correction_id']]
+            relations.append({'target': entry['target'], 'target_xact_id': ua['xact_id'],
+                              'source': entry['source'], 'correction_id': r['correction_id'],
+                              'reason': entry['reason'], 'by': entry['by'], 'at': entry['at']})
+
+    # Cross-reference source notes ('See ... Flow Chart') bound to activity rows:
+    # each can draft table -> row 'refines' entries. The reviewer picks the table;
+    # nothing is derived from the note's wording. A note that points into the
+    # protocol body or at a figure ('See Section 8.2.2', 'See ... (Attachment 7)',
+    # 'See Figure 5.1-1') is not a candidate.
+    candidates = []
+    for annot in data.get('unified_annotations', []):
+        if annot['annotation_type'] != 'source_note' or not annot.get('referenced_xacts'):
+            continue
+        text = annot['annotation_text'].strip().lower()
+        if not text.startswith('see') or text.startswith(BODY_REFERENCE_PREFIXES):
+            continue
+        if any(word in text for word in BODY_REFERENCE_WORDS):
+            continue
+        note_tables = {occ['table_num'] for occ in annot['source_occurrences']}
+        if not any(t['table_type'] != 'reference' and t['table_num'] not in note_tables for t in tables):
+            continue
+        rows = [row(ref) for xact_id in annot['referenced_xacts']
+                for ref in by_xact[xact_id]['source_refs'] if ref['table_num'] in note_tables]
+        candidates.append({
+            'xannot_id': annot['xannot_id'], 'text': annot['annotation_text'], 'rows': rows,
+            'tables': [{'table_number': t['table_num'], 'table_title': t.get('table_title', '')}
+                       for t in tables
+                       if t['table_type'] != 'reference' and t['table_num'] not in note_tables],
+        })
+
+    # A note that names one of the protocol's extracted tables by its printed
+    # number ('See Table 2', document_references with table_num) is a candidate
+    # too, with that table as the only one to pick. A table-wide note binds no
+    # row, so it is listed without a draft: a refinement is stated on a row.
+    listed = {c['xannot_id'] for c in candidates}
+    for annot in data.get('unified_annotations', []):
+        if annot['xannot_id'] in listed:
+            continue
+        note_tables = {occ['table_num'] for occ in annot['source_occurrences']}
+        named = [ref['table_num'] for ref in annot.get('document_references', [])
+                 if 'table_num' in ref and ref['table_num'] not in note_tables]
+        if not named:
+            continue
+        rows = [row(ref) for xact_id in annot['referenced_xacts']
+                for ref in by_xact[xact_id]['source_refs'] if ref['table_num'] in note_tables]
+        candidates.append({
+            'xannot_id': annot['xannot_id'], 'text': annot['annotation_text'], 'rows': rows,
+            'tables': [{'table_number': t['table_num'], 'table_title': t.get('table_title', '')}
+                       for t in tables if t['table_num'] in named],
+        })
+
+    protocol_id = data['protocol_id']
+    return {
+        'protocol_id': protocol_id,
+        'sidecar': corrections_path(Path('.'), protocol_id).name,
+        'sidecar_exists': corrections_doc is not None,
+        'next_id': len(entries) + 1,
+        'items': items,
+        'relations': relations,
+        'candidates': candidates,
+        'open': sum(1 for i in items if not i['decision']),
+    }
+
+
+MATCHES_SCRIPT = '''
+    <script>
+    (function () {
+        const M = __MODEL__;
+        const choice = {}, picked = {};
+        const body = document.getElementById('matches-body');
+        const fmt = r => 'T' + r.table_number + (r.activity_id ? ' ' + r.activity_id : '');
+        function entries() {
+            const by = document.getElementById('matches-by').value || '<reviewer>';
+            const at = new Date().toISOString().slice(0, 19) + 'Z';
+            const out = []; let n = M.next_id;
+            const id = () => 'ccorr-' + String(n++).padStart(3, '0');
+            M.items.forEach((it, i) => {
+                if (!choice[i]) return;
+                out.push({id: id(), op: choice[i], source: it.source, target: it.target,
+                          reason: '<why>', by: by, at: at});
+            });
+            M.candidates.forEach((c, k) => {
+                if (!picked[k]) return;
+                c.rows.forEach(r => out.push({id: id(), op: 'refines', source: {table_number: picked[k]},
+                                              target: r, reason: '<why>', by: by, at: at}));
+            });
+            return out;
+        }
+        function render() {
+            const e = entries(), el = document.getElementById('matches-draft');
+            if (!e.length) { el.value = ''; return; }
+            el.value = JSON.stringify(M.sidecar_exists ? e : {schema_name: 'soa-consolidation-corrections',
+                schema_version: '1.0', protocol_id: M.protocol_id, corrections: e}, null, 2);
+        }
+        function choose(i, op) {
+            choice[i] = choice[i] === op ? null : op;
+            body.querySelectorAll('button[data-i="' + i + '"]').forEach(
+                b => b.classList.toggle('on', b.dataset.op === choice[i]));
+        }
+        body.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { choose(+b.dataset.i, b.dataset.op); render(); });
+        body.querySelectorAll('button[data-group]').forEach(b => b.onclick = () => {
+            b.dataset.group.split(',').forEach(i => { if (choice[+i] !== b.dataset.op) choose(+i, b.dataset.op); });
+            render();
+        });
+        body.querySelectorAll('select[data-k]').forEach(sel => sel.onchange = () => {
+            picked[+sel.dataset.k] = sel.value ? +sel.value : null; render();
+        });
+        document.getElementById('matches-by').oninput = render;
+    })();
+    </script>'''
+
+
+def gen_matches_component(model: dict) -> str:
+    """Generate the 'Matches across tables' component: the cross-table matches to
+    review, their decisions, and a draft of consolidation-sidecar entries to copy.
+    The page writes nothing."""
+    items = model['items']
+
+    def row_cell(r: dict, other: Optional[dict] = None) -> str:
+        """A row; with the other row of the pair, the words that differ are marked."""
+        name = mark_differences(r['activity_name'], other['activity_name']) if other else esc(r['activity_name'])
+        return f"<span class='trace'>T{r['table_number']} {esc(r['activity_id'])}</span> {name}"
+
+    RELATION = {'merged': 'merged with', 'separate': 'kept separate from', 'split': 'split from'}
+    CHOICES = {'merged': [('keep', 'keep the merge'), ('split', 'split')],
+               'separate': [('keep', 'keep separate'), ('merge', 'merge')]}
+
+    # Open near matches against one target row can be decided together.
+    groups = defaultdict(list)
+    for i, it in enumerate(items):
+        if it['kind'] == 'separate' and not it['decision']:
+            groups[(it['target']['table_number'], it['target']['activity_id'])].append(i)
+
+    rows = []
+    for i, it in enumerate(items):
+        d = it['decision']
+        score = '' if it['score'] is None else f" <span class='trace'>{it['score']:.2f}</span>"
+        if d:
+            state = f"<span class='pill done'>decided · {esc(d['correction_id'])} {esc(d['op'])}</span>"
+            action = f"{esc(d['reason'])} <span class='trace'>{esc(d['by'])}, {esc(d['at'])}</span>"
+        else:
+            state = "<span class='pill open'>open</span>"
+            action = ' '.join(f'<button data-i="{i}" data-op="{op}">{label}</button>'
+                              for op, label in CHOICES[it['kind']])
+        rows.append(f"""<tr>
+            <td>{state}</td>
+            <td class="text-full">{row_cell(it['source'], it['target'])}</td>
+            <td class="type">{RELATION[it['kind']]}{score}</td>
+            <td class="text-full">{row_cell(it['target'], it['source'])}</td>
+            <td class="id"><a href="#{it['xact_id']}">{it['xact_id']}</a></td>
+            <td>{action}</td>
+        </tr>""")
+        key = (it['target']['table_number'], it['target']['activity_id'])
+        if it['kind'] == 'separate' and len(groups.get(key, [])) > 1 and groups[key][-1] == i:
+            ids = ','.join(str(g) for g in groups[key])
+            n = len(groups[key])
+            rows.append(f"""<tr class="group-row">
+            <td></td><td colspan="4" class="type">The {n} open near matches of {row_cell(it['target'])}</td>
+            <td><button data-group="{ids}" data-op="keep">keep all {n} separate</button> <button data-group="{ids}" data-op="merge">merge all {n}</button></td>
+        </tr>""")
+
+    refines = []
+    for r in model['relations']:
+        source = row_cell(r['source']) if 'activity_id' in r['source'] else f"Table {r['source']['table_number']} (whole table)"
+        refines.append(f"""<tr>
+            <td><span class='pill done'>stated · {esc(r['correction_id'])}</span></td>
+            <td class="text-full">{source}</td>
+            <td class="type">refines</td>
+            <td class="text-full">{row_cell(r['target'])}</td>
+            <td class="id"><a href="#{r['target_xact_id']}">{r['target_xact_id']}</a></td>
+            <td>{esc(r['reason'])} <span class='trace'>{esc(r['by'])}, {esc(r['at'])}</span></td>
+        </tr>""")
+    for k, c in enumerate(model['candidates']):
+        options = ''.join(f'<option value="{t["table_number"]}">Table {t["table_number"]} — {esc(t["table_title"])}</option>'
+                          for t in c['tables'])
+        refines.append(f"""<tr>
+            <td><span class='pill'>source note</span></td>
+            <td class="text-full"><a href="#{c['xannot_id']}">{note_label(c['xannot_id'])}</a> “{esc(c['text'])}”</td>
+            <td class="type">points from</td>
+            <td class="text-full">{'<br/>'.join(row_cell(r) for r in c['rows']) if c['rows'] else "<span class='trace'>table-wide note, bound to no row</span>"}</td>
+            <td></td>
+            <td>{f'<select data-k="{k}"><option value="">which table refines? (no draft)</option>{options}</select>' if c['rows'] else "<span class='trace'>names " + ', '.join('Table ' + str(t['table_number']) for t in c['tables']) + "; no row to state a refinement on</span>"}</td>
+        </tr>""")
+
+    total = len(items)
+    if not total:
+        desc = 'no matches to review'
+    elif model['open']:
+        desc = f"{model['open']} open of {total}"
+    else:
+        desc = f"all {total} decided"
+    intro = ("Rows that consolidation merged on name similarity, or kept separate from a near match. "
+             "Whether two rows are the same activity is the reviewer's call: choosing drafts an entry "
+             f"for <code>{esc(model['sidecar'])}</code> below; nothing is saved from here. "
+             "Rows merged on an identical name are not listed. Words that only one of the two names prints are "
+             "marked; the score ignores case, hyphens, slashes, text in parentheses and plural endings.")
+    matches_table = f"""<table class="comp-table">
+                <thead><tr><th>state</th><th>row</th><th>consolidation</th><th>other row</th><th>activity</th><th>decision</th></tr></thead>
+                <tbody>{''.join(rows)}</tbody>
+            </table>""" if rows else ''
+    refines_table = f"""<div class="comp-note">Refinements: a table or row that details a row of another table, without being the same activity. A cross-reference note can draft the entry once the table it means is picked; row-to-row entries are written by hand.</div>
+            <table class="comp-table">
+                <thead><tr><th>state</th><th>refining side</th><th></th><th>row</th><th>activity</th><th>draft</th></tr></thead>
+                <tbody>{''.join(refines)}</tbody>
+            </table>""" if refines else ''
+    draft_label = ('entries to append to' if model['sidecar_exists'] else 'new file')
+    script = MATCHES_SCRIPT.replace('__MODEL__', json.dumps(model, ensure_ascii=False).replace('</', '<\\/'))
+    return f'''
+    <div class="comp{' start-open' if model['open'] else ''}" id="matches">
+        <div class="comp-header collapsible" style="background: {COLORS['activities']};" onclick="toggleSection(this)">
+            <span class="comp-title"><span class="toggle-icon">▼</span> Matches across tables</span>
+            <span class="comp-desc">{desc}</span>
+        </div>
+        <div class="comp-body" id="matches-body">
+            <div class="comp-note">{intro}</div>
+            {matches_table}
+            {refines_table}
+            <div class="comp-note">Draft — {draft_label} <code>consolidated/{esc(model['sidecar'])}</code>; replace each <code>&lt;why&gt;</code>, then re-run consolidation.
+                <input id="matches-by" placeholder="your name, as it should appear in the sidecar">
+                <textarea id="matches-draft" readonly placeholder="Choose a decision above to draft sidecar entries here."></textarea>
+            </div>
+        </div>
+    </div>{script}'''
+
+
+def gen_activities_component(data: dict) -> str:
+    """Generate Unified Activities component."""
+    activities = data.get('unified_activities', [])
+    by_xact = {ua['xact_id']: ua for ua in activities}
+    
+    rows = []
+    for ua in activities:
+        bg = get_match_color(ua.get('match_status', 'new'), ua.get('table_count', 1))
+        source_refs = ua.get('source_refs', [])
+        tables = ', '.join(f"T{sr['table_num']}" for sr in source_refs)
+        
+        name_variations = ua.get('name_variations', [])
+        if name_variations and len(set(name_variations)) > 1:
+            unique_names = list(dict.fromkeys(name_variations))
+            name_display = f"<strong>{esc(unique_names[0])}</strong>"
+            if len(unique_names) > 1:
+                name_display += f"<br/><span class='variations'>≈ {'; '.join(esc(n) for n in unique_names[1:])}</span>"
+        else:
+            name_display = esc(ua.get('activity_name', ''))
+        for r in ua.get('refines', []):
+            name_display += f"<br/><span class='variations'>↳ refines <a href='#{r['xact_id']}'>{r['xact_id']}</a> {esc(by_xact[r['xact_id']]['activity_name'])}</span>"
+        
+        rows.append(f'''<tr id="{ua.get('xact_id', '')}" style="background: {bg};">
+            <td class="id">{ua.get('xact_id', '')}</td>
+            <td class="text-full">{name_display}</td>
+            <td class="trace">{esc(ua.get('parent_name', '')[:40])}</td>
+            <td class="type" title="match_status: {esc(ua.get('match_status', ''))}">{get_match_label(ua.get('match_status', 'new'))}</td>
+            <td class="trace">{ua.get('table_count', 1)}</td>
+            <td class="trace">{tables}</td>
+            <td class="type">{'section' if ua.get('is_section_header', False) else ''}</td>
+        </tr>''')
+        # Nested under the row: what refines it (a 'refines' entry of the sidecar).
+        for r in ua.get('refined_by', []):
+            if 'xact_id' in r:
+                refining = by_xact[r['xact_id']]
+                what = (f"<a href='#{r['xact_id']}'>{r['xact_id']}</a> {esc(refining['activity_name'])} "
+                        f"<span class='trace'>{', '.join('T' + str(sr['table_num']) for sr in refining['source_refs'])}</span>")
+            else:
+                what = f"Table {r['table_num']} (whole table)"
+            rows.append(f'''<tr class="refined-by">
+            <td></td>
+            <td class="text-full" colspan="6">↳ refined by {what} <span class="trace">{esc(r['correction_id'])}</span></td>
+        </tr>''')
+    
+    return f'''
+    <div class="comp">
+        <div class="comp-header collapsible" style="background: {COLORS['activities']};" onclick="toggleSection(this)">
+            <span class="comp-title"><span class="toggle-icon">▼</span> Unified Activities</span>
+            <span class="comp-desc">{len(activities)} activities</span>
+        </div>
+        <div class="comp-body">
+            <table class="comp-table">
+                <thead><tr>
+                    <th>xact_id</th><th>activity_name (variations)</th><th>parent</th><th>match</th><th>#</th><th>tables</th><th>row kind</th>
+                </tr></thead>
+                <tbody>{''.join(rows)}</tbody>
+            </table>
+        </div>
+    </div>'''
+
+
+REFERENCE_KIND_LABELS = {'section': 'Section', 'appendix': 'Appendix', 'attachment': 'Attachment',
+                         'table': 'Table', 'figure': 'Figure'}
+
+
+def format_document_references(refs: list) -> str:
+    """What a note points at in the protocol, as printed ('Section 8.2.2 · Table 4').
+    A table reference that names one of the protocol's extracted tables says so (T4)."""
+    parts = []
+    for ref in refs:
+        label = f"{REFERENCE_KIND_LABELS[ref['kind']]} {esc(ref['target'])}"
+        if 'table_num' in ref:
+            label += f" <span class='trace' title='One of this protocol&#39;s extracted tables'>(T{ref['table_num']})</span>"
+        parts.append(label)
+    return ' · '.join(parts)
+
+
+def gen_annotations_component(data: dict) -> str:
+    """Generate Unified Annotations component."""
+    annotations = data.get('unified_annotations', [])
+    meta = data.get('consolidation_metadata', {})
+    annot_stats = meta.get('annotation_stats', {})
+    
+    if not annotations:
+        return ''
+    
+    # Group annotations by type
+    by_type = defaultdict(list)
+    for ua in annotations:
+        by_type[ua.get('annotation_type', 'footnote')].append(ua)
+    
+    # Build activity lookup for displaying referenced activity names
+    act_lookup = {}
+    for ua in data.get('unified_activities', []):
+        act_lookup[ua.get('xact_id', '')] = ua.get('activity_name', '')
+    
+    # Build column lookup for displaying referenced column labels
+    col_lookup = {}
+    for segment, cols in data.get('timeline_segments', {}).items():
+        for col in cols:
+            xcol_id = col.get('xcol_id', '')
+            label = extract_column_identifier(col)
+            if not label:
+                label = col.get('composite_label', '')[:20]
+            col_lookup[xcol_id] = label
+
+    # Annotations that have a marker in the grid get a way back to it
+    notes = build_note_index(data)
+    in_grid = {x for k in ('cells', 'acts', 'cols', 'props') for xs in notes[k].values() for x in xs}
+
+    # Property lookup for displaying referenced_props by name
+    prop_lookup = {p.get('property_id', ''): p.get('property_name', '')
+                   for p in data.get('property_hierarchy', [])}
+    
+    sections = []
+    type_order = ['footnote', 'abbreviation', 'legend', 'source_note', 'continuation_note']
+    type_colors = {
+        'footnote': '#5a6268',
+        'abbreviation': '#2E75B6',
+        'legend': '#538135',
+        'source_note': '#BF8F00',
+        'continuation_note': '#C65911'
+    }
+    
+    for atype in type_order:
+        type_annots = by_type.get(atype, [])
+        if not type_annots:
+            continue
+        
+        rows = []
+        for ua in type_annots:
+            xannot_id = ua.get('xannot_id', '')
+            display_markers = ua.get('display_markers', '')
+            occ_count = ua.get('occurrence_count', 1)
+            text = display_text(ua)
+            
+            # Full text: the grid's note markers link here, so this is where a note is read
+            text_display = text
+            
+            # Determine scope and build references display
+            ref_xacts = ua.get('referenced_xacts', [])
+            ref_xcols = ua.get('referenced_xcols', [])
+            ref_props = ua.get('referenced_props', [])
+            cell_refs = ua.get('cell_references', [])
+
+            scope_parts = []
+
+            if ref_xacts:
+                act_names = [act_lookup.get(xact, xact) for xact in ref_xacts[:3]]
+                act_display = ' | '.join(act_names)
+                if len(ref_xacts) > 3:
+                    act_display += f' (+{len(ref_xacts) - 3})'
+                scope_parts.append(f'<span class="scope-acts" title="Activities">{esc(act_display)}</span>')
+
+            if ref_xcols and not ref_xacts:
+                # Property-level: show column labels (timeline scope)
+                col_labels = [col_lookup.get(xcol, xcol) for xcol in ref_xcols[:5]]
+                col_display = ' | '.join(col_labels)
+                if len(ref_xcols) > 5:
+                    col_display += f' (+{len(ref_xcols) - 5})'
+                scope_parts.append(f'<span class="scope-cols" title="Timeline columns: {len(ref_xcols)} total">{esc(col_display)}</span>')
+
+            if ref_props:
+                prop_names = [prop_lookup.get(p, p) or p for p in ref_props]
+                scope_parts.append(f'<span class="scope-props" title="Schedule properties">{esc(" | ".join(prop_names))}</span>')
+
+            if cell_refs:
+                scope_parts.append(f'<span class="scope-cells" title="Specific cells">{len(cell_refs)} cells</span>')
+            
+            if not scope_parts:
+                refs_display = '<span class="scope-table" title="Table-level">table</span>'
+            else:
+                refs_display = ' '.join(scope_parts)
+            
+            # Highlight: multi-table is the common case (no tint), light purple for property-level,
+            # single-table grey - the same convention as the activity rows
+            if ref_xcols and not ref_xacts:
+                bg = '#f3e8f8'  # purple tint - property/timeline annotation
+            else:
+                bg = '#fff'
+            
+            back_link = (f' <a class="ingrid" href="#" onclick="showInGrid(&quot;{xannot_id}&quot;); return false;" '
+                         f'title="Show where this annotation applies in the schedule" '
+                         f'aria-label="Show where this annotation applies in the schedule"><svg class="ico" width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="8" r="1.8" fill="currentColor"/></svg></a>'
+                         if xannot_id in in_grid else '')
+            rows.append(f'''<tr id="{xannot_id}" style="background: {bg};">
+                <td class="id">{xannot_id} <span class="mk">{note_label(xannot_id)}</span>{back_link}</td>
+                <td class="trace">{esc(display_markers)}</td>
+                <td class="trace">{occ_count}</td>
+                <td class="text-full" title="{esc(text)}">{esc(text_display)}{f'<br><span class="trace">Review note: {esc(ua["review_note"])}</span>' if 'review_note' in ua else ''}</td>
+                <td class="trace">{refs_display}</td>
+                <td class="type">{format_document_references(ua.get('document_references', []))}</td>
+            </tr>''')
+        
+        color = type_colors.get(atype, '#666')
+        sections.append(f'''
+            <div class="annot-section">
+                <div class="annot-type-header" style="background: {color};">{atype.replace('_', ' ').title()} ({len(type_annots)})</div>
+                <table class="comp-table">
+                    <thead><tr>
+                        <th>xannot_id</th><th>markers</th><th>#</th><th>text</th><th>scope</th><th title="The numbered section, appendix, attachment, table or figure of the protocol that the text points at">points to</th>
+                    </tr></thead>
+                    <tbody>{''.join(rows)}</tbody>
+                </table>
+            </div>
+        ''')
+    
+    # Stats summary
+    src_count = annot_stats.get('source_annotation_count', len(annotations))
+    unified_count = annot_stats.get('unified_annotation_count', len(annotations))
+    dedup_pct = annot_stats.get('deduplication_percent', 0)
+    
+    return f'''
+    <div class="comp">
+        <div class="comp-header collapsible" style="background: #6c757d;" onclick="toggleSection(this)">
+            <span class="comp-title"><span class="toggle-icon">▼</span> Unified Annotations</span>
+            <span class="comp-desc">{unified_count} annotations ({dedup_pct}% dedup from {src_count})</span>
+        </div>
+        <div class="comp-body">
+            {''.join(sections)}
+        </div>
+    </div>'''
+
+
+# =============================================================================
+# Note markers in the grid
+# =============================================================================
+
+def note_label(xannot_id: str) -> str:
+    """Grid marker for a unified annotation: its sequence number (xannot-003 -> 3)."""
+    return str(int(xannot_id.rsplit('-', 1)[1]))
+
+
+def build_note_index(data: dict) -> dict:
+    """Where each unified annotation lands in the grid, from the consolidated references.
+
+    cells: (xact, xcol) -> [xannot]    the annotation names specific cells
+    acts:  xact -> [xannot]            an activity row, where no cell of that row is named
+    cols:  xcol -> [xannot]            a timeline column (property-level annotation)
+    props: (property_type, level) -> [xannot]   a schedule property row
+    Annotations with none of these are table-level and stay in the Unified Annotations list.
+    """
+    prop_key = {p['property_id']: (p.get('property_type', ''), p.get('hierarchical_level'))
+                for p in data.get('property_hierarchy', [])}
+    idx = {'cells': defaultdict(list), 'acts': defaultdict(list), 'cols': defaultdict(list),
+           'props': defaultdict(list), 'text': {}}
+    for ua in data.get('unified_annotations', []):
+        xid = ua['xannot_id']
+        idx['text'][xid] = display_text(ua)
+        cell_acts = set()
+        for cr in ua.get('cell_references', []):
+            idx['cells'][(cr['xact_id'], cr['xcol_id'])].append(xid)
+            cell_acts.add(cr['xact_id'])
+        for xact in ua.get('referenced_xacts', []):
+            if xact not in cell_acts:
+                idx['acts'][xact].append(xid)
+        if not ua.get('referenced_xacts'):
+            for xcol in ua.get('referenced_xcols', []):
+                idx['cols'][xcol].append(xid)
+        for pid in ua.get('referenced_props', []):
+            idx['props'][prop_key[pid]].append(xid)
+    return idx
+
+
+def note_marks(xids: list, idx: dict) -> str:
+    """Superscript note markers, each linking to its row in Unified Annotations."""
+    if not xids:
+        return ''
+    links = ','.join(
+        f'<a href="#{x}" title="{esc(idx["text"][x][:300])}">{note_label(x)}</a>' for x in xids)
+    return f'<sup class="mk">{links}</sup>'
+
+
+# =============================================================================
+# Schedule Grid
+# =============================================================================
+
+FROZEN_COL1_WIDTH = 340
+FROZEN_COL2_WIDTH = 60
+
+
+def extract_column_identifier(column: dict) -> str:
+    """Extract the property value that uniquely identifies this column."""
+    pvs = column.get('property_values', [])
+    if not pvs:
+        return ''
+    for ptype in ['visit', 'cycle', 'study_day']:
+        for pv in pvs:
+            if pv.get('property_type') == ptype and pv.get('value'):
+                return pv.get('value')
+    for pv in sorted(pvs, key=lambda x: x.get('level') or 99):
+        val = pv.get('value', '')
+        ptype = pv.get('property_type', '')
+        if ptype == 'epoch' and not val:
+            continue
+        if val:
+            return val
+    return ''
+
+
+def get_cell_population_info(data: dict) -> tuple:
+    """Build lookups for population comparison."""
+    segments = data.get('timeline_segments', {})
+    track_cols = segments.get('track', [])
+    matrix = data.get('schedule_matrix', [])
+    
+    if not track_cols:
+        return {}, {}
+    
+    col_info = {}
+    col_tp_map = {}
+    for c in track_cols:
+        col_id = extract_column_identifier(c)
+        track = c.get('population_track', '')
+        col_info[c['xcol_id']] = (col_id, track)
+        col_tp_map[c['xcol_id']] = col_id
+    
+    cell_pops: Dict[tuple, Dict[str, str]] = defaultdict(dict)
+    
+    for m in matrix:
+        xcol = m.get('xcol_id', '')
+        if xcol in col_info:
+            col_id, track = col_info[xcol]
+            xact = m.get('xact_id', '')
+            value = m.get('consolidated_value', '')
+            if value and track:
+                cell_pops[(xact, col_id)][track] = value
+    
+    return dict(cell_pops), col_tp_map
+
+
+def gen_schedule_grid(data: dict, segment: str, columns: List[dict], pop_colors: PopulationColorMapper,
+                      anchored: set = None) -> str:
+    """Generate schedule grid for a segment."""
+    if not columns:
+        return ""
+    notes = build_note_index(data)
+    
+    activities = data.get('unified_activities', [])
+    matrix = {(m['xact_id'], m['xcol_id']): m['consolidated_value'] 
+              for m in data.get('schedule_matrix', [])}
+    
+    # For track/domain/subsidiary segments, derive property hierarchy from columns
+    # These segments may have different structure than main timeline
+    if segment in ('track', 'domain', 'subsidiary'):
+        props_from_cols = {}
+        for col in columns:
+            for pv in col.get('property_values', []):
+                level = pv.get('level')
+                prop_type = pv.get('property_type', '')
+                # Key: int for hierarchical, str for qualifiers (level=None)
+                if level is not None:
+                    key = level
+                else:
+                    key = f"q_{prop_type}"
+                
+                if key not in props_from_cols:
+                    props_from_cols[key] = {
+                        'hierarchical_level': level,
+                        'property_name': pv.get('property_name', ''),
+                        'property_type': prop_type
+                    }
+        
+        # Sort: hierarchical (int keys) first, qualifiers (str keys) after
+        hier_keys = sorted([k for k in props_from_cols if isinstance(k, int)])
+        qual_keys = sorted([k for k in props_from_cols if isinstance(k, str)])
+        props = [props_from_cols[k] for k in hier_keys + qual_keys]
+    else:
+        props = data.get('property_hierarchy', [])
+    
+    cell_pops, col_tp_map = get_cell_population_info(data) if segment == 'track' else ({}, {})
+    
+    all_tracks = set()
+    if segment == 'track':
+        all_tracks = {c.get('population_track', '') for c in columns if c.get('population_track')}
+    
+    rows = []
+    
+    if segment == 'main':
+        title = f"Main Schedule ({len(columns)} columns)"
+        title_bg = COLORS['header']
+    elif segment == 'domain':
+        title = f"Domain Schedule ({len(columns)} columns)"
+        title_bg = '#548235'
+    elif segment == 'track':
+        tracks = sorted(all_tracks)
+        title = f"Track Timelines: {', '.join(tracks)} ({len(columns)} columns)"
+        title_bg = '#7030A0'
+    elif segment == 'subsidiary':
+        title = f"Subsidiary Schedule ({len(columns)} columns)"
+        title_bg = '#17a2b8'
+    
+    # Detect boundaries between tables/tracks for vertical dividers
+    boundaries = set()
+    prev_key = None
+    for i, col in enumerate(columns):
+        if segment == 'track':
+            key = col.get('population_track', '')
+        else:
+            src = col.get('source_columns', [{}])[0]
+            key = src.get('table_num', '')
+        if prev_key is not None and key != prev_key:
+            boundaries.add(i)
+        prev_key = key
+    
+    def border_class(idx):
+        return ' table-border' if idx in boundaries else ''
+    
+    rows.append(f'<tr><th class="frozen-col1 activity-header">Activity</th><th class="frozen-col2">In</th>')
+    runs = []  # [start index, table_nums, span] per run of consecutive columns from the same tables
+    for i, col in enumerate(columns):
+        tnums = tuple(sc.get('table_num', '') for sc in col.get('source_columns', [{}]))
+        if runs and runs[-1][1] == tnums and i not in boundaries:
+            runs[-1][2] += 1
+        else:
+            runs.append([i, tnums, 1])
+    for start, tnums, span in runs:
+        label = f"Table {tnums[0]}" if len(tnums) == 1 else f"Tables {', '.join(str(t) for t in tnums)}"
+        rows.append(f'<th colspan="{span}" class="table-run{border_class(start)}">{label}</th>')
+    rows.append('</tr>')
+    
+    if segment == 'track':
+        rows.append('<tr><th class="frozen-col1"></th><th class="frozen-col2"></th>')
+        for i, col in enumerate(columns):
+            track = col.get('population_track', '')
+            bg = pop_colors.get_header_color(track)
+            rows.append(f'<th class="{border_class(i).strip()}" style="background: {bg}; color: white; font-size: 8px; white-space: normal; word-wrap: break-word; max-width: 80px;">{esc(track)}</th>')
+        rows.append('</tr>')
+    
+    # Separate hierarchical properties from qualifiers
+    hierarchical_props = [p for p in props if p.get('hierarchical_level') is not None]
+    qualifier_props = [p for p in props if p.get('hierarchical_level') is None]
+    
+    # Render hierarchical properties
+    col_mark_level = hierarchical_props[0].get('hierarchical_level') if hierarchical_props else None
+    for prop in hierarchical_props:
+        level = prop.get('hierarchical_level')
+        bg = get_level_color(level)
+        text_color = get_level_text_color(level)
+        prop_name = prop.get('property_name', '')
+        prop_type = prop.get('property_type', '')
+        pmarks = note_marks(notes['props'].get((prop_type, level), []), notes)
+        
+        rows.append(f'<tr><th class="frozen-col1" style="background: {bg}; color: {text_color}; text-align: left; font-size: 9px;">{esc(prop_name)}{pmarks}<br/><span style="font-size: 8px; opacity: 0.8;">[{prop_type}] L{level}</span></th>')
+        rows.append(f'<th class="frozen-col2" style="background: {bg};"></th>')
+        
+        for i, col in enumerate(columns):
+            value = ""
+            for pv in col.get('property_values', []):
+                if pv.get('level') == level:
+                    value = pv.get('value', '')
+                    break
+            cmarks = note_marks(notes['cols'].get(col['xcol_id'], []), notes) if level == col_mark_level else ''
+            rows.append(f'<td class="{border_class(i).strip()}" style="background: {bg}; color: {text_color}; text-align: center; font-size: 9px;">{esc(value)}{cmarks}</td>')
+        rows.append('</tr>')
+    
+    # Render qualifier properties with neutral styling
+    for prop in qualifier_props:
+        prop_name = prop.get('property_name', '')
+        prop_type = prop.get('property_type', '')
+        bg = COLORS['qualifier_bg']
+        text_color = COLORS['qualifier_text']
+        
+        pmarks = note_marks(notes['props'].get((prop_type, None), []), notes)
+        rows.append(f'<tr><th class="frozen-col1" style="background: {bg}; color: {text_color}; text-align: left; font-size: 9px;">{esc(prop_name)}{pmarks}<br/><span style="font-size: 8px; opacity: 0.8;">[{prop_type}]</span></th>')
+        rows.append(f'<th class="frozen-col2" style="background: {bg};"></th>')
+        
+        for i, col in enumerate(columns):
+            value = ""
+            for pv in col.get('property_values', []):
+                if pv.get('property_type') == prop_type and pv.get('level') is None:
+                    value = pv.get('value', '')
+                    break
+            rows.append(f'<td class="{border_class(i).strip()}" style="background: {bg}; color: {text_color}; text-align: center; font-size: 9px;">{esc(value)}</td>')
+        rows.append('</tr>')
+    
+    # Get table numbers that contribute columns to this segment
+    segment_tables = {sc.get('table_num') for col in columns
+                      for sc in col.get('source_columns', [{}])}
+    
+    for ua in activities:
+        xact_id = ua['xact_id']
+        
+        has_data = any(matrix.get((xact_id, col['xcol_id']), '') for col in columns)
+        from_segment_table = any(sr['table_num'] in segment_tables 
+                                 for sr in ua.get('source_refs', []))
+        if not has_data and not ua.get('is_section_header', False) and not from_segment_table:
+            continue
+        
+        match_bg = get_match_color(ua.get('match_status', 'new'), ua.get('table_count', 1))
+        is_header = ua.get('is_section_header', False)
+        
+        name_cls = "section-header" if is_header else ""
+        if ua.get('parent_name'):
+            name_cls += " child"
+        
+        tables = ','.join(f"T{sr['table_num']}" for sr in ua.get('source_refs', []))
+        
+        amarks = note_marks(notes['acts'].get(xact_id, []), notes)
+        # The first grid row of an activity carries its xact_id as anchor (target of the
+        # activity inventory's links); an activity shown in several segments is anchored once.
+        row_id = ''
+        if anchored is not None and xact_id not in anchored:
+            anchored.add(xact_id)
+            row_id = f' id="{xact_id}"'
+        rows.append(f'<tr{row_id}><td class="frozen-col1 activity-name {name_cls}" style="background: {match_bg};" title="{esc(ua.get("qualified_key", ""))}">{esc(ua.get("activity_name", ""))}{amarks}</td>')
+        rows.append(f'<td class="frozen-col2" style="background: {match_bg}; font-size: 8px;">{tables}</td>')
+        
+        for i, col in enumerate(columns):
+            xcol_id = col['xcol_id']
+            value = matrix.get((xact_id, xcol_id), '')
+            bc = border_class(i)
+            xmarks = note_marks(notes['cells'].get((xact_id, xcol_id), []), notes)
+            
+            if value:
+                if segment == 'track' and len(all_tracks) > 1:
+                    col_id = col_tp_map.get(xcol_id, '')
+                    track = col.get('population_track', '')
+                    pop_data = cell_pops.get((xact_id, col_id), {})
+                    tracks_with_data = set(pop_data.keys())
+                    
+                    if len(tracks_with_data) >= len(all_tracks):
+                        cell_bg = COLORS['cell_common']
+                        text_color = '#1F4788'
+                    else:
+                        cell_bg = pop_colors.get_cell_color(track)
+                        text_color = pop_colors.get_text_color(track)
+                else:
+                    cell_bg = COLORS['cell_data']
+                    text_color = COLORS['header']
+                
+                rows.append(f'<td class="{bc.strip()}" style="background: {cell_bg}; color: {text_color}; font-weight: bold; text-align: center;">{esc(value)}{xmarks}</td>')
+            else:
+                rows.append(f'<td class="{bc.strip()}">{xmarks}</td>')
+        rows.append('</tr>')
+    
+    return f'''
+    <div class="section collapsible-section">
+        <div class="section-title" style="background: {title_bg};" onclick="toggleGrid(this)">
+            <span class="toggle-icon">▼</span> {title}
+        </div>
+        <div class="grid-container">
+            <table class="grid-table">{''.join(rows)}</table>
+        </div>
+    </div>'''
+
+
+# =============================================================================
+# Full HTML Generator
+# =============================================================================
+
+def generate_consolidated_html(data: dict, nav=None, row_names: Optional[dict] = None,
+                               corrections_doc: Optional[dict] = None) -> str:
+    """Generate complete consolidated HTML.
+
+    row_names ((table_number, activity_id) -> activity_name, from the resolved
+    tables) and corrections_doc (the consolidation corrections sidecar, if any)
+    feed the 'Matches across tables' section."""
+    protocol_id = data.get('protocol_id', 'Unknown')
+    meta = data.get('consolidation_metadata', {})
+    
+    num_tables = len(meta.get('source_tables', []))
+    num_activities = meta.get('unified_activity_count', 0)
+    compression = meta.get('compression_percent', 0)
+    
+    segments = data.get('timeline_segments', {})
+    total_cols = sum(len(cols) for cols in segments.values())
+    
+    # Initialize PopulationColorMapper from source_tables track_labels AND track columns
+    # This ensures consistent colors across Source Tables display and schedule grids
+    pop_colors = PopulationColorMapper()
+    
+    # Register tracks from source_tables first (so they get colors in display order)
+    for t in meta.get('source_tables', []):
+        track = t.get('track_label', '')
+        if track:
+            pop_colors.get_colors(track)
+    
+    # Also register from track columns (may have additional tracks)
+    track_cols = segments.get('track', [])
+    for col in track_cols:
+        track = col.get('population_track', '')
+        if track:
+            pop_colors.get_colors(track)
+    
+    css = f"""
+        :root {{ --blue:#1F4788; --blue2:#2E75B6; --ink:#1f2933; --muted:#5f6b7a;
+                 --line:#d9dee5; --bg:#f5f7fa; --head:#fafbfc; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font: 13px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            color: var(--ink); background: var(--bg);
+        }}
+
+        {NAV_CSS}
+        /* nav: the review page's full-bleed bar (markup shared, skin local) */
+        .pnav {{ border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none;
+                 margin: 0; padding: 8px 22px; color: var(--muted); }}
+        .pnav a {{ color: var(--blue2); }}
+        .pnav-cur {{ color: var(--ink); }}
+        .pnav-sep {{ color: #9aa4af; }}
+        .pnav-grp {{ color: #8a94a0; }}
+
+        .header {{ background: var(--blue); color: #fff; padding: 14px 22px; }}
+        .header h1 {{ font-size: 20px; font-weight: 600; }}
+        .header .sub {{ font-size: 13px; opacity: .85; margin-top: 3px; }}
+        .content {{ padding: 14px 22px 20px; }}
+
+        .toolbar {{
+            background: #fff; border: 1px solid var(--line); border-radius: 6px;
+            padding: 8px 12px; margin-bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+        }}
+        .toolbar button {{
+            font: inherit; font-size: 12px; padding: 3px 9px; border: 1px solid var(--line);
+            border-radius: 4px; background: #fff; color: var(--ink); cursor: pointer;
+        }}
+        .toolbar button:hover {{ border-color: var(--blue2); }}
+
+        .comp, .section {{
+            background: #fff; border: 1px solid var(--line); border-radius: 6px;
+            margin-bottom: 14px; overflow: hidden;
+        }}
+        /* section bars: one neutral panel heading (inline per-section colours are overridden) */
+        .comp-header, .section-title {{
+            background: var(--head) !important; color: var(--ink);
+            border-bottom: 1px solid var(--line); padding: 9px 12px; cursor: pointer; user-select: none;
+        }}
+        .comp-header {{ display: flex; justify-content: space-between; align-items: center; }}
+        .comp-header:hover, .section-title:hover {{ background: #f0f4f9 !important; }}
+        .comp-title, .section-title {{ font-weight: 600; font-size: 13px; }}
+        .comp-desc {{ font-size: 12px; color: var(--muted); }}
+        .toggle-icon {{ display: inline-block; transition: transform 0.2s; margin-right: 8px; color: var(--muted); }}
+        .comp.collapsed .toggle-icon {{ transform: rotate(-90deg); }}
+        .comp.collapsed .comp-header {{ border-bottom: 0; }}
+        .comp-body {{ overflow: hidden; transition: max-height 0.3s; padding: 0; }}
+        .comp.collapsed .comp-body {{ max-height: 0 !important; }}
+        .comp-note {{ padding: 10px 12px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); background: var(--head); }}
+
+        .comp-table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+        .comp-table th {{
+            background: var(--head); padding: 6px 10px; text-align: left;
+            font-weight: 600; border-bottom: 1px solid var(--line); white-space: nowrap;
+        }}
+        .comp-table td {{
+            padding: 5px 10px; border-bottom: 1px solid #eef1f4;
+            vertical-align: top; word-wrap: break-word;
+        }}
+        .comp-table tr:hover {{ background: #eef4fb; }}
+        .comp-table tr.refined-by td {{ color: var(--muted); padding-left: 28px; }}
+        .comp-table tr.group-row td {{ background: var(--head); }}
+        mark.diff {{ background: #fff1c2; color: inherit; padding: 0 2px; border-radius: 2px; }}
+        .pill {{ display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }}
+        .pill.open {{ border-color: #c77700; color: #8a5300; background: #fff6e5; }}
+        .pill.done {{ border-color: #2e7d32; color: #1b5e20; background: #edf7ee; }}
+        #matches button, #matches select {{ font-size: 11px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 4px; background: #fff; cursor: pointer; }}
+        #matches button.on {{ background: var(--blue2); border-color: var(--blue2); color: #fff; }}
+        #matches-by {{ display: block; width: 320px; margin: 8px 0 4px; font-size: 12px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; }}
+        #matches-draft {{ display: block; width: 100%; height: 200px; font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 6px; }}
+
+        .prop-comparison th.table-col {{ text-align: center; min-width: 320px; }}
+        .prop-comparison .track-small {{ font-size: 10px; font-weight: normal; color: var(--muted); }}
+        .prop-comparison .level-cell {{ font-weight: 600; text-align: center; width: 60px; font-size: 12px; }}
+        .prop-comparison .prop-data {{ text-align: left; vertical-align: top; padding: 10px 12px !important; }}
+        .prop-comparison .prop-empty {{ text-align: center; color: #ccc; background: var(--head); font-size: 12px; }}
+        .prop-cell-content {{ }}
+        .prop-cell-content .prop-name {{ font-weight: 600; font-size: 12px; margin-bottom: 2px; }}
+        .prop-cell-content .prop-type {{ font-size: 11px; opacity: 0.85; margin-bottom: 6px; }}
+        .prop-cell-content .prop-comment {{ font-size: 11px; opacity: 0.9; font-style: normal; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 6px; margin-top: 4px; }}
+
+        .title-full {{ max-width: 600px; }}
+        .purpose-text {{ font-size: 11px; color: var(--muted); font-style: italic; }}
+
+        .conclusion-col {{ min-width: 120px; text-align: center; }}
+        .conclusion-cell {{ text-align: center; font-size: 12px; background: var(--head); padding: 10px !important; }}
+        .conc-match {{ color: #2e7d32; font-weight: 600; }}
+        .conc-similar {{ color: #0277bd; font-weight: 600; }}
+        .conc-differ {{ color: #c62828; font-weight: 600; }}
+        .conc-partial {{ color: #c77700; font-weight: 600; }}
+        .conc-empty {{ color: #ccc; }}
+
+        .id {{ font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; color: var(--blue); }}
+        .field {{ font-weight: 600; color: var(--ink); white-space: nowrap; }}
+        .type {{ font-size: 11px; color: var(--muted); }}
+        .trace {{ color: #8a94a0; font-size: 11px; }}
+        .bool {{ font-size: 11px; }}
+        .text-full {{ max-width: 400px; }}
+        .variations {{ font-size: 10px; color: var(--muted); font-style: italic; }}
+        .track-label {{ padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 500; }}
+        .data.null {{ color: #8a94a0; font-style: italic; }}
+        .data.bool {{ color: var(--blue2); }}
+
+        .annot-section {{ margin: 0 0 12px; }}
+        .annot-type-header {{
+            background: var(--head) !important; color: var(--ink); padding: 7px 12px;
+            font-size: 12px; font-weight: 600; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+        }}
+
+        .scope-acts {{ color: {COLORS['activities']}; }}
+        .scope-cols {{ color: #0277bd; font-style: italic; }}
+        .scope-props {{ color: #6a1b9a; font-style: italic; }}
+        .scope-cells {{ color: #2e7d32; }}
+        .scope-table {{ color: #8a94a0; font-style: italic; }}
+
+        .section-title .toggle-icon {{
+            display: inline-block; transition: transform 0.2s; margin-right: 8px;
+        }}
+        .collapsible-section.collapsed .toggle-icon {{ transform: rotate(-90deg); }}
+        .collapsible-section.collapsed .section-title {{ border-bottom: 0; }}
+        .collapsible-section.collapsed .grid-container {{ display: none; }}
+        .grid-container {{ overflow-x: auto; padding: 10px; }}
+
+        .table-border {{ border-left: 2px solid var(--muted) !important; }}
+
+        .grid-table {{ border-collapse: separate; border-spacing: 0; font-size: 12px; }}
+        .grid-table th, .grid-table td {{ border: 1px solid #e4e8ed; padding: 2px 6px; }}
+        .grid-table th {{ background: var(--head); font-weight: 600; font-size: 11px; }}
+        .grid-table th.activity-header {{ text-align: left; }}
+
+        .frozen-col1 {{
+            position: sticky;
+            left: 0;
+            z-index: 2;
+            min-width: {FROZEN_COL1_WIDTH}px;
+            max-width: {FROZEN_COL1_WIDTH}px;
+            background: var(--head);
+            border-right: 1px solid var(--line) !important;
+        }}
+        .frozen-col2 {{
+            position: sticky;
+            left: {FROZEN_COL1_WIDTH}px;
+            z-index: 2;
+            min-width: {FROZEN_COL2_WIDTH}px;
+            max-width: {FROZEN_COL2_WIDTH}px;
+            background: var(--head);
+            border-right: 1px solid var(--line) !important;
+            text-align: center;
+        }}
+        .grid-table th.frozen-col1,
+        .grid-table th.frozen-col2 {{
+            z-index: 3;
+        }}
+        .frozen-col2::after {{
+            content: '';
+            position: absolute;
+            top: 0;
+            right: -6px;
+            bottom: 0;
+            width: 6px;
+            background: linear-gradient(to right, rgba(0,0,0,0.06), transparent);
+            pointer-events: none;
+        }}
+
+        .activity-name {{ text-align: left; white-space: normal; }}
+        .grid-table th.table-run {{ background: var(--blue); color: #fff; font-size: 11px; text-align: center; }}
+        sup.mk {{ font-size: 9px; margin-left: 2px; font-weight: 600; }}
+        sup.mk a {{ color: #6a1b9a; text-decoration: none; }}
+        sup.mk a:hover {{ text-decoration: underline; }}
+        .grid-table th[style*="color: white"] sup.mk a, .grid-table td[style*="color: white"] sup.mk a {{ color: #f3e5ff; }}
+        span.mk {{ color: #6a1b9a; font-weight: 600; margin-left: 4px; }}
+        tr:target td {{ background: #fff3d6 !important; }}
+        .ingrid {{ color: var(--blue2); text-decoration: none; }}
+        .ingrid .ico {{ vertical-align: -2px; }}
+        a.ingrid:hover {{ color: var(--blue); }}
+        .grid-table .hit {{ outline: 2px solid #ffb300; outline-offset: -2px; box-shadow: inset 0 0 0 40px rgba(255,179,0,.25); }}
+        .activity-name.section-header {{ font-weight: 600; }}
+        .activity-name.child {{ padding-left: 15px; }}
+
+        .legend {{
+            background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px;
+            margin-bottom: 14px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+            font-size: 12px; color: var(--muted);
+        }}
+        .legend-item {{ display: flex; align-items: center; gap: 6px; }}
+        .legend-color {{ width: 16px; height: 12px; border-radius: 2px; border: 1px solid var(--line); }}
+        .legend-section {{ font-weight: 600; color: var(--ink); margin-left: 6px; }}
+    """
+    
+    anchored = set()
+    grids = ''.join(gen_schedule_grid(data, segment, segments[segment], pop_colors, anchored)
+                    for segment in ['main', 'domain', 'track', 'subsidiary'] if segments.get(segment))
+
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{page_title(protocol_id, 'Consolidated SoA', nav.collection) if nav else f'{protocol_id} · Consolidated SoA'}</title>
+    <style>{css}</style>
+</head>
+<body>
+    <div class="header">
+        <h1>{protocol_id} — consolidated Schedule of Activities</h1>
+        <div class="sub">{esc(nav.collection) + ' · ' if nav else ''}{num_tables} tables · {num_activities} activities ({compression}% compression) · {total_cols} columns · {esc(data['schema_name'])} v{esc(data['schema_version'])} · Layer 3</div>
+    </div>
+    {gen_navigation(nav)}
+    <div class="content">
+    
+    <div class="toolbar">
+        <button onclick="expandAll()">▼ Expand All</button>
+        <button onclick="collapseAll()">▶ Collapse All</button>
+    </div>
+    
+    <div class="legend">
+        <span class="legend-section">Activities:</span>
+        <div class="legend-item"><div class="legend-color" style="background:{COLORS['match_fuzzy']};"></div>Near match across tables</div>
+        <div class="legend-item"><div class="legend-color" style="background:{COLORS['match_cross']};"></div>Near match, different parent</div>
+        <span class="legend-section">|</span>
+        <span class="legend-section">Annotations:</span>
+        <div class="legend-item"><sup class="mk"><a>3</a></sup>&nbsp;click for the text</div>
+        <div class="legend-item"><span class="ingrid"><svg class="ico" width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="8" r="1.8" fill="currentColor"/></svg></span>&nbsp;in Unified Annotations: show where it applies</div>
+        <span class="legend-section">|</span>
+        <span class="legend-section">Cells:</span>
+        <div class="legend-item"><div class="legend-color" style="background:{COLORS['cell_common']};"></div>Common</div>
+        {" ".join(f'<div class="legend-item"><div class="legend-color" style="background:{cell_col}; border-color:{hdr_col};"></div>{esc(track[:20])} only</div>' for track, hdr_col, cell_col in pop_colors.get_track_list())}
+    </div>
+    
+    {grids}
+    {gen_matches_component(build_matches_model(data, row_names, corrections_doc))}
+    {gen_metadata_component(data)}
+    {gen_tables_component(data, pop_colors)}
+    {gen_property_comparison_component(data)}
+    {gen_activities_component(data)}
+    {gen_annotations_component(data)}
+'''
+    
+    html += '''
+    </div>
+    <script>
+        function toggleSection(header) {
+            const comp = header.closest('.comp');
+            comp.classList.toggle('collapsed');
+        }
+        function toggleGrid(title) {
+            const section = title.closest('.collapsible-section');
+            section.classList.toggle('collapsed');
+        }
+        function expandAll() {
+            document.querySelectorAll('.comp, .collapsible-section').forEach(c => c.classList.remove('collapsed'));
+        }
+        function collapseAll() {
+            document.querySelectorAll('.comp, .collapsible-section').forEach(c => c.classList.add('collapsed'));
+        }
+        // Start with component sections collapsed, grids expanded
+        document.querySelectorAll('.comp:not(.start-open)').forEach(c => c.classList.add('collapsed'));
+        // Note markers link to #xannot-NNN: open its section, then scroll to the row
+        function showNote() {
+            const row = location.hash && document.getElementById(location.hash.slice(1));
+            if (!row) return;
+            const comp = row.closest('.comp');
+            if (comp) comp.classList.remove('collapsed');
+            row.scrollIntoView({block: 'center'});
+        }
+        window.addEventListener('hashchange', showNote);
+        showNote();
+        // And back: highlight every grid place carrying this note's marker, scroll to the first
+        function showInGrid(xid) {
+            document.querySelectorAll('.hit').forEach(e => e.classList.remove('hit'));
+            const places = [...document.querySelectorAll('.grid-table sup.mk a[href="#' + xid + '"]')]
+                .map(a => a.closest('td, th'));
+            places.forEach(e => {
+                e.classList.add('hit');
+                const sec = e.closest('.collapsible-section');
+                if (sec) sec.classList.remove('collapsed');
+            });
+            if (places.length) places[0].scrollIntoView({block: 'center', inline: 'center'});
+        }
+    </script>
+</body>
+</html>'''
+    
+    return html
+
+
+# =============================================================================
+# Pipeline Step Class
+# =============================================================================
+
+class VisualizeStep(PipelineStepBase):
+    """Generate HTML visualization from consolidated JSON."""
+    
+    step_name = "visualize"
+    
+    def execute(self, data: dict) -> dict:
+        """Execute visualization for consolidated file.
+        
+        Args:
+            data: Must contain 'source' with protocol_id, collection
+                  Optionally 'consolidate' with output_file from consolidate step
+        """
+        source = data.get("source", {})
+        protocol_id = source.get("protocol_id")
+        collection = source.get("collection")
+        
+        if not protocol_id or not collection:
+            self._log_error("Missing protocol_id or collection in source")
+            return {"output_file": None}
+        
+        # Find consolidated file
+        consolidated_dir = config.get_consolidated_dir(protocol_id, collection)
+        consolidated_file = consolidated_dir / f"{protocol_id}_consolidated.json"
+        
+        if not consolidated_file.exists():
+            self._log_error("No consolidated file found", {"expected": str(consolidated_file)})
+            return {"output_file": None}
+        
+        try:
+            with open(consolidated_file) as f:
+                consolidated_data = json.load(f)
+            
+            # Build navigation context
+            all_tables = []
+            resolved_files = config.find_resolved_files(protocol_id, collection)
+            for rf in resolved_files:
+                try:
+                    with open(rf) as f:
+                        rd = json.load(f)
+                    tnum = rd.get('table_metadata', {}).get('table_number', 0)
+                    html_name = rf.name.replace('_resolved.json', '_resolved.html')
+                    all_tables.append((tnum, html_name))
+                except Exception:
+                    pass
+            all_tables.sort(key=lambda x: x[0])
+            
+            nav = NavContext(
+                protocol_id=protocol_id,
+                collection=collection,
+                all_tables=all_tables
+            )
+            
+            # Row names for the matches section (a sidecar entry names source rows),
+            # and the consolidation corrections sidecar, when the protocol has one.
+            row_names = {}
+            for rf in resolved_files:
+                rd = json.loads(rf.read_text(encoding="utf-8"))
+                tnum = rd['table_metadata']['table_number']
+                for act in rd['activities']:
+                    row_names[(tnum, act['activity_id'])] = act['activity_name']
+            sidecar = corrections_path(consolidated_dir, protocol_id)
+            corrections_doc = json.loads(sidecar.read_text(encoding="utf-8")) if sidecar.exists() else None
+
+            html = generate_consolidated_html(consolidated_data, nav, row_names, corrections_doc)
+            
+            output_file = consolidated_dir / f"{protocol_id}_consolidated.html"
+            output_file.write_text(html)
+            
+            self._analytics.increment("files_visualized")
+            
+            return {
+                "input_file": str(consolidated_file),
+                "output_file": str(output_file),
+                "status": "success"
+            }
+        
+        except Exception as e:
+            self._log_error(f"Visualization failed: {e}")
+            return {"output_file": None, "status": "failed", "error": str(e)}

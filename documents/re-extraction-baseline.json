@@ -1,0 +1,1032 @@
+{
+ "collection": "usdm_data",
+ "collections": {
+  "head": "33fd0b1",
+  "extractions_last_changed": "2c6d07c"
+ },
+ "extraction_hash": "9a474f83fe3d6da0",
+ "counts": {
+  "studies": 22,
+  "tables": 43
+ },
+ "row_audit": {
+  "protocols": 22,
+  "protocols_audited": 22,
+  "tables": 43,
+  "tables_without_pages": 11,
+  "pages_not_in_any_extraction": 1,
+  "on_page_not_extracted": 10,
+  "extracted_not_on_page": 94,
+  "on_page_not_extracted_items": [
+   {
+    "study": "NCT01847274",
+    "table": 2,
+    "page": 6,
+    "text": "Note: Patients in food effect sub-study willwill then start open-label treatment with dailyfollowed using the main study visit schedule"
+   },
+   {
+    "study": "NCT02107703",
+    "table": 2,
+    "page": 7,
+    "text": "Procedure"
+   },
+   {
+    "study": "NCT02107703",
+    "table": 2,
+    "page": 7,
+    "text": "Protocol Reference"
+   },
+   {
+    "study": "NCT02107703",
+    "table": 2,
+    "page": 7,
+    "text": "Collection/CTCAE Gradingb"
+   },
+   {
+    "study": "NCT02107703",
+    "table": 2,
+    "page": 7,
+    "text": "Section 10.3"
+   },
+   {
+    "study": "NCT03283098",
+    "table": 1,
+    "page": 1,
+    "text": "Footnotes displayed on the next"
+   },
+   {
+    "study": "NCT03283098",
+    "table": 2,
+    "page": 3,
+    "text": "displayed on the"
+   },
+   {
+    "study": "NCT03283098",
+    "table": 3,
+    "page": 5,
+    "text": "hemodialysis; ET"
+   },
+   {
+    "study": "NCT03817853",
+    "table": 1,
+    "page": 1,
+    "text": "Study drug obinutuzumabadministration chemotherapy"
+   },
+   {
+    "study": "NCT03817853",
+    "table": 1,
+    "page": 1,
+    "text": "Study drug obinutuzumabadministration chemotherapy"
+   }
+  ]
+ },
+ "per_table_metrics": [
+  {
+   "study": "CDISC_Pilot",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "53-54",
+   "acts": 30,
+   "bind": 8,
+   "marks": 139,
+   "props": 2,
+   "grid": 30,
+   "ann": 8,
+   "fn": 2,
+   "sn": 0,
+   "ab": 4,
+   "lg": 2
+  },
+  {
+   "study": "NCT01847274",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "63-66",
+   "acts": 28,
+   "bind": 28,
+   "marks": 90,
+   "props": 2,
+   "grid": 18,
+   "ann": 28,
+   "fn": 28,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT01847274",
+   "table": 2,
+   "ttype": "track",
+   "pages": "72-73",
+   "acts": 17,
+   "bind": 15,
+   "marks": 79,
+   "props": 3,
+   "grid": 24,
+   "ann": 16,
+   "fn": 16,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT01847274",
+   "table": 3,
+   "ttype": "track",
+   "pages": "78-78",
+   "acts": 15,
+   "bind": 15,
+   "marks": 40,
+   "props": 3,
+   "grid": 15,
+   "ann": 15,
+   "fn": 15,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT02107703",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "73-77",
+   "acts": 31,
+   "bind": 37,
+   "marks": 117,
+   "props": 5,
+   "grid": 40,
+   "ann": 37,
+   "fn": 16,
+   "sn": 20,
+   "ab": 0,
+   "lg": 1
+  },
+  {
+   "study": "NCT02107703",
+   "table": 2,
+   "ttype": "track",
+   "pages": "78-78",
+   "acts": 3,
+   "bind": 6,
+   "marks": 6,
+   "props": 5,
+   "grid": 15,
+   "ann": 6,
+   "fn": 3,
+   "sn": 2,
+   "ab": 0,
+   "lg": 1
+  },
+  {
+   "study": "NCT02291289",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "169-173",
+   "acts": 21,
+   "bind": 20,
+   "marks": 56,
+   "props": 3,
+   "grid": 18,
+   "ann": 20,
+   "fn": 20,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT02291289",
+   "table": 2,
+   "ttype": "track",
+   "pages": "174-178",
+   "acts": 25,
+   "bind": 24,
+   "marks": 47,
+   "props": 2,
+   "grid": 8,
+   "ann": 24,
+   "fn": 23,
+   "sn": 1,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT02291289",
+   "table": 3,
+   "ttype": "track",
+   "pages": "179-183",
+   "acts": 24,
+   "bind": 21,
+   "marks": 39,
+   "props": 2,
+   "grid": 8,
+   "ann": 21,
+   "fn": 20,
+   "sn": 1,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT02291289",
+   "table": 4,
+   "ttype": "track",
+   "pages": "184-188",
+   "acts": 22,
+   "bind": 21,
+   "marks": 40,
+   "props": 2,
+   "grid": 8,
+   "ann": 21,
+   "fn": 20,
+   "sn": 1,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT02291289",
+   "table": 5,
+   "ttype": "track",
+   "pages": "189-193",
+   "acts": 26,
+   "bind": 23,
+   "marks": 45,
+   "props": 2,
+   "grid": 8,
+   "ann": 23,
+   "fn": 22,
+   "sn": 1,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT03283098",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "32-33",
+   "acts": 14,
+   "bind": 11,
+   "marks": 94,
+   "props": 2,
+   "grid": 40,
+   "ann": 12,
+   "fn": 9,
+   "sn": 0,
+   "ab": 2,
+   "lg": 0
+  },
+  {
+   "study": "NCT03283098",
+   "table": 2,
+   "ttype": "domain",
+   "pages": "34-35",
+   "acts": 14,
+   "bind": 13,
+   "marks": 65,
+   "props": 2,
+   "grid": 40,
+   "ann": 14,
+   "fn": 8,
+   "sn": 0,
+   "ab": 5,
+   "lg": 0
+  },
+  {
+   "study": "NCT03283098",
+   "table": 3,
+   "ttype": "domain",
+   "pages": "36-36",
+   "acts": 7,
+   "bind": 9,
+   "marks": 23,
+   "props": 2,
+   "grid": 40,
+   "ann": 10,
+   "fn": 7,
+   "sn": 0,
+   "ab": 3,
+   "lg": 0
+  },
+  {
+   "study": "NCT03402841",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "40-41",
+   "acts": 18,
+   "bind": 8,
+   "marks": 19,
+   "props": 1,
+   "grid": 2,
+   "ann": 8,
+   "fn": 8,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT03402841",
+   "table": 2,
+   "ttype": "main_soa",
+   "pages": "42-44",
+   "acts": 15,
+   "bind": 11,
+   "marks": 45,
+   "props": 3,
+   "grid": 17,
+   "ann": 11,
+   "fn": 11,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT03421379",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "11-18",
+   "acts": 36,
+   "bind": 27,
+   "marks": 80,
+   "props": 2,
+   "grid": 15,
+   "ann": 27,
+   "fn": 25,
+   "sn": 2,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT03548935",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "8-13",
+   "acts": 78,
+   "bind": 37,
+   "marks": 428,
+   "props": 4,
+   "grid": 100,
+   "ann": 37,
+   "fn": 7,
+   "sn": 30,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT03548987",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "8-11",
+   "acts": 69,
+   "bind": 33,
+   "marks": 378,
+   "props": 4,
+   "grid": 100,
+   "ann": 33,
+   "fn": 4,
+   "sn": 29,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT03637764",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "18-21",
+   "acts": 29,
+   "bind": 11,
+   "marks": 159,
+   "props": 3,
+   "grid": 27,
+   "ann": 11,
+   "fn": 5,
+   "sn": 6,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT03693430",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "9-12",
+   "acts": 63,
+   "bind": 30,
+   "marks": 470,
+   "props": 4,
+   "grid": 136,
+   "ann": 30,
+   "fn": 4,
+   "sn": 26,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT03817853",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "100-102",
+   "acts": 27,
+   "bind": 28,
+   "marks": 89,
+   "props": 4,
+   "grid": 31,
+   "ann": 28,
+   "fn": 28,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04004988",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "10-11",
+   "acts": 20,
+   "bind": 15,
+   "marks": 90,
+   "props": 2,
+   "grid": 28,
+   "ann": 17,
+   "fn": 17,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04184622",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "18-21",
+   "acts": 54,
+   "bind": 28,
+   "marks": 414,
+   "props": 5,
+   "grid": 96,
+   "ann": 28,
+   "fn": 27,
+   "sn": 1,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04184622",
+   "table": 2,
+   "ttype": "track",
+   "pages": "22-24",
+   "acts": 39,
+   "bind": 19,
+   "marks": 311,
+   "props": 5,
+   "grid": 76,
+   "ann": 19,
+   "fn": 18,
+   "sn": 1,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04320615",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "77-80",
+   "acts": 28,
+   "bind": 20,
+   "marks": 56,
+   "props": 3,
+   "grid": 15,
+   "ann": 21,
+   "fn": 21,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04320615",
+   "table": 2,
+   "ttype": "main_soa",
+   "pages": "81-83",
+   "acts": 17,
+   "bind": 11,
+   "marks": 220,
+   "props": 2,
+   "grid": 54,
+   "ann": 12,
+   "fn": 12,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04320615",
+   "table": 3,
+   "ttype": "main_soa",
+   "pages": "84-85",
+   "acts": 14,
+   "bind": 8,
+   "marks": 32,
+   "props": 2,
+   "grid": 6,
+   "ann": 8,
+   "fn": 8,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04557384",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "16-22",
+   "acts": 25,
+   "bind": 23,
+   "marks": 232,
+   "props": 5,
+   "grid": 75,
+   "ann": 23,
+   "fn": 21,
+   "sn": 2,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04557384",
+   "table": 2,
+   "ttype": "track",
+   "pages": "23-23",
+   "acts": 3,
+   "bind": 4,
+   "marks": 3,
+   "props": 2,
+   "grid": 4,
+   "ann": 4,
+   "fn": 4,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04557384",
+   "table": 3,
+   "ttype": "subsidiary",
+   "pages": "24-24",
+   "acts": 15,
+   "bind": 1,
+   "marks": 63,
+   "props": 1,
+   "grid": 5,
+   "ann": 1,
+   "fn": 1,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04573309",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "14-16",
+   "acts": 44,
+   "bind": 24,
+   "marks": 252,
+   "props": 3,
+   "grid": 72,
+   "ann": 24,
+   "fn": 24,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04573309",
+   "table": 2,
+   "ttype": "subsidiary",
+   "pages": "17-17",
+   "acts": 2,
+   "bind": 3,
+   "marks": 16,
+   "props": 1,
+   "grid": 11,
+   "ann": 3,
+   "fn": 3,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04677179",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "17-23",
+   "acts": 63,
+   "bind": 32,
+   "marks": 158,
+   "props": 5,
+   "grid": 38,
+   "ann": 32,
+   "fn": 29,
+   "sn": 3,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04677179",
+   "table": 2,
+   "ttype": "track",
+   "pages": "24-32",
+   "acts": 40,
+   "bind": 19,
+   "marks": 180,
+   "props": 5,
+   "grid": 100,
+   "ann": 19,
+   "fn": 15,
+   "sn": 4,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04677179",
+   "table": 3,
+   "ttype": "track",
+   "pages": "33-42",
+   "acts": 40,
+   "bind": 17,
+   "marks": 211,
+   "props": 5,
+   "grid": 82,
+   "ann": 17,
+   "fn": 14,
+   "sn": 3,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04677179",
+   "table": 4,
+   "ttype": "track",
+   "pages": "43-46",
+   "acts": 39,
+   "bind": 16,
+   "marks": 54,
+   "props": 5,
+   "grid": 16,
+   "ann": 16,
+   "fn": 15,
+   "sn": 1,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04730349",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "28-30",
+   "acts": 21,
+   "bind": 18,
+   "marks": 17,
+   "props": 1,
+   "grid": 1,
+   "ann": 18,
+   "fn": 18,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04730349",
+   "table": 2,
+   "ttype": "main_soa",
+   "pages": "31-38",
+   "acts": 27,
+   "bind": 22,
+   "marks": 83,
+   "props": 3,
+   "grid": 18,
+   "ann": 22,
+   "fn": 20,
+   "sn": 2,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT04730349",
+   "table": 3,
+   "ttype": "main_soa",
+   "pages": "39-42",
+   "acts": 19,
+   "bind": 14,
+   "marks": 51,
+   "props": 1,
+   "grid": 4,
+   "ann": 15,
+   "fn": 13,
+   "sn": 2,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT05176314",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "10-11",
+   "acts": 22,
+   "bind": 8,
+   "marks": 122,
+   "props": 2,
+   "grid": 41,
+   "ann": 8,
+   "fn": 7,
+   "sn": 0,
+   "ab": 0,
+   "lg": 1
+  },
+  {
+   "study": "NCT05259917",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "17-18",
+   "acts": 24,
+   "bind": 19,
+   "marks": 61,
+   "props": 2,
+   "grid": 9,
+   "ann": 19,
+   "fn": 19,
+   "sn": 0,
+   "ab": 0,
+   "lg": 0
+  },
+  {
+   "study": "NCT05324124",
+   "table": 1,
+   "ttype": "main_soa",
+   "pages": "9-12",
+   "acts": 19,
+   "bind": 10,
+   "marks": 77,
+   "props": 3,
+   "grid": 43,
+   "ann": 10,
+   "fn": 7,
+   "sn": 1,
+   "ab": 1,
+   "lg": 1
+  }
+ ],
+ "quote_verification": {
+  "checked": 242,
+  "verbatim": 238,
+  "unverified": 4,
+  "skipped": 15,
+  "per_study": [
+   {
+    "study": "CDISC_Pilot",
+    "verbatim": 0,
+    "unverified": 0,
+    "skipped": 3
+   },
+   {
+    "study": "NCT01847274",
+    "verbatim": 20,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT02107703",
+    "verbatim": 16,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT02291289",
+    "verbatim": 10,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT03283098",
+    "verbatim": 9,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT03402841",
+    "verbatim": 15,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT03421379",
+    "verbatim": 22,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT03548935",
+    "verbatim": 5,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT03548987",
+    "verbatim": 13,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT03637764",
+    "verbatim": 27,
+    "unverified": 0,
+    "skipped": 2
+   },
+   {
+    "study": "NCT03693430",
+    "verbatim": 19,
+    "unverified": 0,
+    "skipped": 1
+   },
+   {
+    "study": "NCT03817853",
+    "verbatim": 5,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT04004988",
+    "verbatim": 3,
+    "unverified": 0,
+    "skipped": 2
+   },
+   {
+    "study": "NCT04184622",
+    "verbatim": 17,
+    "unverified": 0,
+    "skipped": 2
+   },
+   {
+    "study": "NCT04320615",
+    "verbatim": 10,
+    "unverified": 0,
+    "skipped": 2
+   },
+   {
+    "study": "NCT04557384",
+    "verbatim": 7,
+    "unverified": 1,
+    "skipped": 0
+   },
+   {
+    "study": "NCT04573309",
+    "verbatim": 13,
+    "unverified": 0,
+    "skipped": 0
+   },
+   {
+    "study": "NCT04677179",
+    "verbatim": 2,
+    "unverified": 2,
+    "skipped": 0
+   },
+   {
+    "study": "NCT04730349",
+    "verbatim": 22,
+    "unverified": 0,
+    "skipped": 1
+   },
+   {
+    "study": "NCT05176314",
+    "verbatim": 0,
+    "unverified": 0,
+    "skipped": 1
+   },
+   {
+    "study": "NCT05259917",
+    "verbatim": 3,
+    "unverified": 1,
+    "skipped": 1
+   },
+   {
+    "study": "NCT05324124",
+    "verbatim": 0,
+    "unverified": 0,
+    "skipped": 0
+   }
+  ],
+  "unverified_items": [
+   {
+    "study": "NCT04557384",
+    "item": "NCT04557384_uncertainty_report.md: not a verbatim substring — 'are the rows activities performed on subjects?'"
+   },
+   {
+    "study": "NCT04677179",
+    "item": "NCT04677179_uncertainty_report.md: not a verbatim substring — 'Doc 24/26/27/28/30/31 are glyph-spread; 25/29/32 clean'"
+   },
+   {
+    "study": "NCT04677179",
+    "item": "NCT04677179_uncertainty_report.md: not a verbatim substring — 'the default: a scope > established by a printed marker'"
+   },
+   {
+    "study": "NCT05259917",
+    "item": "NCT05259917_uncertainty_report.md: not a verbatim substring — 'continuous throughout the span'"
+   }
+  ]
+ },
+ "corrections": {
+  "sidecars": 10,
+  "sidecars_with_content": 4,
+  "total": 29,
+  "files": [
+   {
+    "file": "NCT01847274_Table_03_corrections.json",
+    "count": 12,
+    "ops": {
+     "set": 12
+    },
+    "targets": {
+     "annotations": 12
+    },
+    "match_keys": {
+     "annotation_marker": 12
+    }
+   },
+   {
+    "file": "NCT02107703_Table_01_corrections.json",
+    "count": 0,
+    "ops": {},
+    "targets": {},
+    "match_keys": {}
+   },
+   {
+    "file": "NCT02107703_Table_02_corrections.json",
+    "count": 0,
+    "ops": {},
+    "targets": {},
+    "match_keys": {}
+   },
+   {
+    "file": "NCT04557384_Table_03_corrections.json",
+    "count": 14,
+    "ops": {
+     "set": 14
+    },
+    "targets": {
+     "activities": 14
+    },
+    "match_keys": {
+     "row_position": 14
+    }
+   },
+   {
+    "file": "NCT04677179_Table_01_corrections.json",
+    "count": 0,
+    "ops": {},
+    "targets": {},
+    "match_keys": {}
+   },
+   {
+    "file": "NCT04677179_Table_02_corrections.json",
+    "count": 0,
+    "ops": {},
+    "targets": {},
+    "match_keys": {}
+   },
+   {
+    "file": "NCT04677179_Table_03_corrections.json",
+    "count": 0,
+    "ops": {},
+    "targets": {},
+    "match_keys": {}
+   },
+   {
+    "file": "NCT04677179_Table_04_corrections.json",
+    "count": 0,
+    "ops": {},
+    "targets": {},
+    "match_keys": {}
+   },
+   {
+    "file": "NCT05176314_Table_01_corrections.json",
+    "count": 2,
+    "ops": {
+     "add": 2
+    },
+    "targets": {
+     "activities": 2
+    },
+    "match_keys": {
+     "none": 2
+    }
+   },
+   {
+    "file": "NCT05324124_Table_01_corrections.json",
+    "count": 1,
+    "ops": {
+     "add": 1
+    },
+    "targets": {
+     "activities": 1
+    },
+    "match_keys": {
+     "none": 1
+    }
+   }
+  ]
+ }
+}

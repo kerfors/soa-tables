@@ -1,0 +1,61 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# === Distribution / packaging ===
+.Python
+build/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+MANIFEST
+wheels/
+sdist/
+
+# === Virtual environments ===
+.env
+.venv
+env/
+venv/
+ENV/
+lib64/
+
+# === Jupyter ===
+.ipynb_checkpoints
+
+# === Testing / coverage ===
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+coverage.xml
+
+# === IDE / OS ===
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# === Type checkers / linters ===
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.pyre/
+
+# === Scratch / working dirs (never publish) ===
+# device_bash cannot rm on the FUSE mount, so files to remove are moved here
+# (e.g. a stale .git/index.lock); *.tgz is the code-repo tarball used to run
+# the test suite off-device.
+_to_delete/
+*.tgz
+
+# === Full NCI EVS CT packages (tools/build_ct_extract.py reads them; only the extract is committed) ===
+ct/downloads/

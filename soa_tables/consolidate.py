@@ -1,0 +1,1853 @@
+"""
+Consolidate Step
+
+Consolidates multiple resolved SoA tables into a unified per-protocol structure.
+
+This is structural consolidation only:
+- Activity matching across tables (exact, fuzzy, cross-parent); the lowest-numbered
+  main_soa table is the base. A fuzzy match below the auto threshold is not merged
+  on any table pair: the activity stays separate and carries the near match as a
+  hint (near_matches)
+- Human decisions on those matches, read from the protocol's consolidation
+  corrections sidecar when one exists (keep / split / merge / refines)
+- Column alignment into timeline segments (main, track, subsidiary); a continuation
+  or domain table prints the columns of one main_soa table and its columns join
+  those main columns (identity, inventory item 32 (a))
+- Annotation consolidation with deduplication; table-wide notes get annotation_scope 'table'
+- Schedule matrix construction
+
+Semantic interpretation (USDM timeline patterns, annotation logic) is out of scope.
+"""
+
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Optional, Dict, List, Set, Tuple, Union
+from collections import defaultdict
+
+from .base import PipelineStepBase
+from . import config
+from .consolidation_corrections import corrections_path, index_corrections
+
+
+# =============================================================================
+# Matching Thresholds
+# =============================================================================
+
+AUTO_MATCH_THRESHOLD = 0.85
+CROSS_PARENT_THRESHOLD = 0.90
+REVIEW_THRESHOLD = 0.60
+
+
+# =============================================================================
+# Utility Functions
+# =============================================================================
+
+def detect_population_track(table_purpose: str, table_title: str = "") -> Optional[str]:
+    """Detect population track from table purpose/title text."""
+    text = f"{table_purpose} {table_title}".lower()
+    if 'nonrespond' in text or 'non-respond' in text:
+        return 'Nonresponders'
+    if 'responder' in text:
+        return 'Responders'
+    if 'maintenance' in text:
+        return 'Maintenance'
+    return None
+
+
+def normalize_text(text: str) -> str:
+    """Normalize text for comparison."""
+    text = text.lower().replace('-', ' ').replace('/', ' ')
+    text = re.sub(r'\([^)]*\)', '', text)
+    return ' '.join(text.split()).strip()
+
+
+def singular(word: str) -> str:
+    """Drop a plural 's' so 'Events' and 'Event' compare as one word. Words ending
+    in 'ss', 'us' or 'is' (status, analysis) and words of three letters are left."""
+    if len(word) > 3 and word.endswith('s') and not word.endswith(('ss', 'us', 'is')):
+        return word[:-1]
+    return word
+
+
+def get_word_set(text: str) -> set:
+    """Extract significant words from text, singular and plural taken as one word."""
+    return {singular(w) for w in normalize_text(text).split() if len(w) > 2}
+
+
+def word_overlap_score(text1: str, text2: str) -> float:
+    """Calculate word overlap score between two texts."""
+    words1, words2 = get_word_set(text1), get_word_set(text2)
+    if not words1 or not words2:
+        return 0.0
+    intersection = words1 & words2
+    union = words1 | words2
+    coverage = len(intersection) / min(len(words1), len(words2))
+    jaccard = len(intersection) / len(union)
+    return 0.6 * coverage + 0.4 * jaccard
+
+
+def find_best_match(name: str, candidates: list, threshold: float = 0.5):
+    """Find best matching candidate by word overlap."""
+    best, best_score = None, 0.0
+    for c in candidates:
+        score = word_overlap_score(name, c['activity_name'])
+        if score > best_score and score >= threshold:
+            best, best_score = c, score
+    return best, best_score
+
+
+def extract_property_hierarchy(table: dict) -> List[dict]:
+    """Extract property hierarchy from a resolved table."""
+    props = table.get('schedule_properties', [])
+    # Sort: hierarchical first (by level), then qualifiers (level=None) as printed
+    def sort_key(p):
+        level = p.get('hierarchical_level')
+        if level is not None:
+            return (0, level, '')  # Hierarchical first, sorted by level
+        return (1, p['row_position'], '')  # Qualifiers after, in print order (item 30)
+    
+    sorted_props = sorted(props, key=sort_key)
+    return [
+        {
+            'hierarchical_level': p.get('hierarchical_level'),  # Preserve None
+            'property_name': p.get('property_name', ''),
+            'property_type': p.get('property_type', 'other'),
+            'property_comment': p.get('property_comment', '')
+        }
+        for p in sorted_props
+    ]
+
+
+# =============================================================================
+# Activity Consolidation
+# =============================================================================
+
+@dataclass
+class UnifiedActivity:
+    """An activity consolidated across tables."""
+    xact_id: str
+    activity_name: str
+    parent_name: str
+    qualified_key: str
+    is_section_header: bool
+    hierarchy_level: int = 0
+    parent_xact_id: Optional[str] = None
+    display_order: int = 0
+    source_refs: list = field(default_factory=list)
+    name_variations: list = field(default_factory=list)
+    match_status: str = "new"
+    match_confidence: float = 1.0
+    is_redacted: bool = False
+    near_matches: list = field(default_factory=list)
+    refines: list = field(default_factory=list)
+    refined_by: list = field(default_factory=list)
+
+    def add_source(self, table_id: str, table_num: int, activity_id: str, 
+                   row_position: int, activity_name: str,
+                   match_status: str = 'new', match_confidence: float = 1.0,
+                   decision: Optional[dict] = None):
+        """Add a source reference. match_status / match_confidence say how this
+        source row came to the activity ('new' = the row that created it).
+        decision names the sidecar entry that decided this row, when there is one."""
+        self.source_refs.append({
+            'table_id': table_id,
+            'table_num': table_num,
+            'activity_id': activity_id,
+            'row_position': row_position,
+            'match_status': match_status,
+            'match_confidence': match_confidence,
+            **({'decision': decision} if decision else {})
+        })
+        if activity_name not in self.name_variations:
+            self.name_variations.append(activity_name)
+
+    @property
+    def table_nums(self) -> Set[int]:
+        """Get set of table numbers this activity appears in."""
+        return {sr['table_num'] for sr in self.source_refs}
+    
+    def get_primary_row_position(self) -> Tuple[int, int]:
+        """Get (table_num, row_position) from earliest source for ordering."""
+        if not self.source_refs:
+            return (999, 999)
+        # Sort by table_num then row_position, return first
+        sorted_refs = sorted(self.source_refs, key=lambda r: (r['table_num'], r['row_position']))
+        return (sorted_refs[0]['table_num'], sorted_refs[0]['row_position'])
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON output."""
+        return {
+            'xact_id': self.xact_id,
+            'activity_name': self.activity_name,
+            'parent_name': self.parent_name,
+            'parent_xact_id': self.parent_xact_id,
+            'hierarchy_level': self.hierarchy_level,
+            'display_order': self.display_order,
+            'qualified_key': self.qualified_key,
+            'is_section_header': self.is_section_header,
+            # Exception-based in the output: present only when true, so the
+            # 19 protocols without redactions do not churn.
+            **({'is_redacted': True} if self.is_redacted else {}),
+            # Present only when the activity was kept separate from a near match.
+            **({'near_matches': self.near_matches} if self.near_matches else {}),
+            # Present only when a 'refines' entry of the sidecar names the activity.
+            **({'refines': self.refines} if self.refines else {}),
+            **({'refined_by': self.refined_by} if self.refined_by else {}),
+            'source_refs': self.source_refs,
+            'name_variations': self.name_variations,
+            'match_status': self.match_status,
+            'match_confidence': self.match_confidence,
+            'table_count': len(self.table_nums)
+        }
+
+
+class ActivityConsolidator:
+    """Consolidates activities across multiple tables."""
+
+    def __init__(self, decisions: Optional[Dict[Tuple[int, str], dict]] = None):
+        self.unified_activities: List[UnifiedActivity] = []
+        self.xact_counter = 0
+        self.key_to_unified: Dict[str, UnifiedActivity] = {}
+        self.review_queue: List[dict] = []
+        # Sidecar decisions by source row (table_number, activity_id); the unified
+        # activity of every consolidated row; the ids of the decisions applied.
+        self.decisions = decisions or {}
+        self.row_to_unified: Dict[Tuple[int, str], UnifiedActivity] = {}
+        self.applied_decisions: Set[str] = set()
+        self.match_stats = {
+            'exact': 0,
+            'fuzzy_auto': 0,
+            'fuzzy_cross_parent': 0,
+            'fuzzy_review': 0,
+            'decision': 0,
+            'new': 0
+        }
+
+    def _make_xact_id(self) -> str:
+        """Generate next cross-table activity ID."""
+        self.xact_counter += 1
+        return f"xact-{self.xact_counter:03d}"
+
+    def _get_parent_name(self, act: dict, act_by_id: dict) -> str:
+        """Get parent activity name."""
+        pid = act.get('parent_activity_id')
+        return act_by_id[pid]['activity_name'] if pid and pid in act_by_id else ""
+
+    def _find_match(self, act: dict, parent_name: str, table_num: int):
+        """Find matching unified activity using multiple strategies."""
+        act_name = act['activity_name']
+        qual_key = f"{parent_name}::{act_name}"
+
+        # Strategy 1: Exact qualified key
+        if qual_key in self.key_to_unified:
+            ua = self.key_to_unified[qual_key]
+            if table_num not in ua.table_nums:
+                return ua, 'exact', 1.0
+
+        # Strategy 2: Exact name match
+        for ua in self.unified_activities:
+            if ua.activity_name == act_name and table_num not in ua.table_nums:
+                return ua, 'exact', 1.0
+
+        # Strategy 3: Fuzzy same-parent
+        same_parent = [
+            ua for ua in self.unified_activities
+            if table_num not in ua.table_nums and ua.parent_name == parent_name
+        ]
+        if same_parent:
+            candidates = [{'activity_name': ua.activity_name, 'ua': ua} for ua in same_parent]
+            best, score = find_best_match(act_name, candidates)
+            if best and score >= AUTO_MATCH_THRESHOLD:
+                return best['ua'], 'fuzzy_auto', score
+            elif best and score >= REVIEW_THRESHOLD:
+                return best['ua'], 'fuzzy_review', score
+
+        # Strategy 4: Fuzzy cross-parent
+        cross_parent = [
+            ua for ua in self.unified_activities
+            if table_num not in ua.table_nums 
+            and ua.parent_name != parent_name 
+            and not ua.is_section_header
+        ]
+        if cross_parent:
+            candidates = [{'activity_name': ua.activity_name, 'ua': ua} for ua in cross_parent]
+            best, score = find_best_match(act_name, candidates)
+            if best and score >= CROSS_PARENT_THRESHOLD:
+                return best['ua'], 'fuzzy_cross_parent', score
+
+        return None, 'new', 0.0
+
+    def _apply_decision(self, entry: dict, matched_ua, status: str, confidence: float,
+                        near, table_num: int):
+        """Apply the sidecar decision on a source row to what matching found for it.
+        Fails fast when the entry's premise no longer holds."""
+        cid, op, target = entry['id'], entry['op'], entry['target']
+        target_ua = self.row_to_unified.get((target['table_number'], target['activity_id']))
+        if target_ua is None:
+            raise ValueError(
+                f"Consolidation correction {cid}: target row T{target['table_number']} "
+                f"{target['activity_id']} is not consolidated before the source row "
+                f"(the target must be in a table processed earlier)")
+        if op == 'keep':
+            if matched_ua is not target_ua and not (near and near[0] is target_ua):
+                raise ValueError(
+                    f"Consolidation correction {cid}: 'keep' names a match that consolidation "
+                    f"no longer makes or nearly makes")
+        elif op == 'split':
+            if matched_ua is not target_ua:
+                raise ValueError(
+                    f"Consolidation correction {cid}: 'split' names a merge that no longer happens")
+            matched_ua, status, confidence, near = None, 'new', 0.0, None
+        elif op == 'merge':
+            if matched_ua is target_ua:
+                raise ValueError(
+                    f"Consolidation correction {cid}: 'merge' names a merge that happens "
+                    f"without it ({status}); use 'keep'")
+            if table_num in target_ua.table_nums:
+                raise ValueError(
+                    f"Consolidation correction {cid}: the target's activity already has "
+                    f"a row from table {table_num}")
+            matched_ua, status, confidence, near = target_ua, 'decision', 1.0, None
+        self.applied_decisions.add(cid)
+        return matched_ua, status, confidence, near, {'correction_id': cid, 'op': op}
+
+    def process_table(self, table: dict, table_num: int, is_base: bool = False,
+                      merge_review_matches: bool = True):
+        """Process activities from a resolved table.
+
+        merge_review_matches=False keeps a fuzzy match below the auto threshold
+        ('fuzzy_review') as a separate activity instead of merging it, and records
+        the near match on that activity (near_matches) — used on every table pair
+        (inventory item 28a): below the auto threshold a merge is an identity
+        judgement, not a wording variant."""
+        acts = table['activities']
+        act_by_id = {a['activity_id']: a for a in acts}
+        table_id = table['table_metadata']['table_id']
+
+        for act in acts:
+            act_name = act['activity_name']
+            parent_name = self._get_parent_name(act, act_by_id)
+            qual_key = f"{parent_name}::{act_name}"
+
+            if is_base:
+                ua = UnifiedActivity(
+                    xact_id=self._make_xact_id(),
+                    activity_name=act_name,
+                    parent_name=parent_name,
+                    qualified_key=qual_key,
+                    is_section_header=act.get('is_section_header', False),
+                    hierarchy_level=act.get('hierarchy_level', 0),
+                    is_redacted=act.get('is_redacted', False)
+                )
+                ua.add_source(table_id, table_num, act['activity_id'], 
+                              act['row_position'], act_name)
+                self.unified_activities.append(ua)
+                self.key_to_unified[qual_key] = ua
+                self.row_to_unified[(table_num, act['activity_id'])] = ua
+                self.match_stats['new'] += 1
+            else:
+                matched_ua, status, confidence = self._find_match(act, parent_name, table_num)
+                near = None
+                if status == 'fuzzy_review' and not merge_review_matches:
+                    near = (matched_ua, confidence)
+                    matched_ua, status, confidence = None, 'new', 0.0
+
+                decision = None
+                entry = self.decisions.get((table_num, act['activity_id']))
+                if entry:
+                    matched_ua, status, confidence, near, decision = self._apply_decision(
+                        entry, matched_ua, status, confidence, near, table_num)
+
+                if matched_ua:
+                    matched_ua.add_source(table_id, table_num, act['activity_id'],
+                                          act['row_position'], act_name,
+                                          status, confidence, decision)
+                    self.row_to_unified[(table_num, act['activity_id'])] = matched_ua
+                    matched_ua.is_redacted = (matched_ua.is_redacted
+                                              or act.get('is_redacted', False))
+                    matched_ua.match_status = status
+                    matched_ua.match_confidence = min(matched_ua.match_confidence, confidence)
+                    self.match_stats[status] += 1
+
+                    if status == 'fuzzy_cross_parent' and matched_ua.parent_name != parent_name:
+                        matched_ua.parent_name = f"{matched_ua.parent_name} / {parent_name}"
+
+                    if status == 'fuzzy_review':
+                        self.review_queue.append({
+                            'xact_id': matched_ua.xact_id,
+                            'confidence': confidence,
+                            'existing_name': matched_ua.activity_name,
+                            'new_name': act_name
+                        })
+                else:
+                    ua = UnifiedActivity(
+                        xact_id=self._make_xact_id(),
+                        activity_name=act_name,
+                        parent_name=parent_name,
+                        qualified_key=qual_key,
+                        is_section_header=act.get('is_section_header', False),
+                        hierarchy_level=act.get('hierarchy_level', 0),
+                        is_redacted=act.get('is_redacted', False)
+                    )
+                    # A decision on a row kept separate from a near match ('keep')
+                    # is recorded on the hint; a 'split' on the row's own source ref.
+                    ua.add_source(table_id, table_num, act['activity_id'],
+                                  act['row_position'], act_name,
+                                  decision=None if near else decision)
+                    if near:
+                        ua.near_matches.append({
+                            'xact_id': near[0].xact_id,
+                            'activity_name': near[0].activity_name,
+                            'score': near[1],
+                            'table_num': table_num,
+                            **({'decision': decision} if decision else {})
+                        })
+                    self.unified_activities.append(ua)
+                    self.key_to_unified[qual_key] = ua
+                    self.row_to_unified[(table_num, act['activity_id'])] = ua
+                    self.match_stats['new'] += 1
+
+    def check_all_decisions_applied(self):
+        """Every keep / split / merge entry must have met its source row. One that
+        did not names a row that is never matched (a row of the base table)."""
+        for entry in self.decisions.values():
+            if entry['id'] not in self.applied_decisions:
+                src = entry['source']
+                raise ValueError(
+                    f"Consolidation correction {entry['id']}: source row T{src['table_number']} "
+                    f"{src['activity_id']} is in the base table, which is not matched against "
+                    f"any other; name the pair the other way round")
+
+    def apply_refinements(self, refinements: List[dict]) -> Dict[int, list]:
+        """Record 'refines' entries: `refines` on the refining activity, `refined_by`
+        on the row it details. Nothing is merged. A whole-table source is returned
+        per table number, for that table's source_tables entry.
+        Must be called after all tables are processed."""
+        table_refines: Dict[int, list] = defaultdict(list)
+        for entry in refinements:
+            cid, source, target = entry['id'], entry['source'], entry['target']
+            target_ua = self.row_to_unified[(target['table_number'], target['activity_id'])]
+            if 'activity_id' in source:
+                source_ua = self.row_to_unified[(source['table_number'], source['activity_id'])]
+                if source_ua is target_ua:
+                    raise ValueError(
+                        f"Consolidation correction {cid}: source and target are the same "
+                        f"unified activity ({target_ua.xact_id})")
+                source_ua.refines.append({'xact_id': target_ua.xact_id, 'correction_id': cid})
+                target_ua.refined_by.append({'xact_id': source_ua.xact_id, 'correction_id': cid})
+            else:
+                table_refines[source['table_number']].append(
+                    {'xact_id': target_ua.xact_id, 'correction_id': cid})
+                target_ua.refined_by.append({'table_num': source['table_number'], 'correction_id': cid})
+        return table_refines
+
+    def resolve_parent_references(self):
+        """Resolve parent_xact_id by matching parent_name to activity_name.
+        
+        Must be called after all tables are processed.
+        """
+        # Build name -> xact_id lookup (use first match for ambiguous names)
+        name_to_xact: Dict[str, str] = {}
+        for ua in self.unified_activities:
+            if ua.activity_name not in name_to_xact:
+                name_to_xact[ua.activity_name] = ua.xact_id
+        
+        # Resolve parent references
+        for ua in self.unified_activities:
+            if ua.parent_name:
+                # Handle cross-parent matches that have " / " in parent_name
+                # Use first parent for resolution
+                primary_parent = ua.parent_name.split(' / ')[0] if ' / ' in ua.parent_name else ua.parent_name
+                ua.parent_xact_id = name_to_xact.get(primary_parent)
+
+    def compute_display_order(self):
+        """Compute display_order for hierarchical presentation.
+        
+        Assigns sequential display_order values so activities appear:
+        1. Parents before their children
+        2. Siblings in source row_position order (earliest table first)
+        3. Activities from later tables inserted near their parent/siblings
+        
+        Must be called after resolve_parent_references().
+        """
+        # Build lookup structures
+        xact_to_ua: Dict[str, UnifiedActivity] = {ua.xact_id: ua for ua in self.unified_activities}
+        
+        # Build children lookup: parent_xact_id -> list of children
+        children_of: Dict[Optional[str], List[UnifiedActivity]] = defaultdict(list)
+        for ua in self.unified_activities:
+            children_of[ua.parent_xact_id].append(ua)
+        
+        # Sort children by their primary row position (table_num, row_position)
+        for parent_id in children_of:
+            children_of[parent_id].sort(key=lambda ua: ua.get_primary_row_position())
+        
+        # Depth-first traversal to assign display_order
+        display_counter = 0
+        
+        def assign_order(ua: UnifiedActivity):
+            nonlocal display_counter
+            display_counter += 1
+            ua.display_order = display_counter
+            # Recursively process children
+            for child in children_of.get(ua.xact_id, []):
+                assign_order(child)
+        
+        # Start with top-level activities (no parent)
+        for ua in children_of.get(None, []):
+            assign_order(ua)
+        
+        # Re-sort unified_activities by display_order
+        self.unified_activities.sort(key=lambda ua: ua.display_order)
+
+
+# =============================================================================
+# Column Consolidation
+# =============================================================================
+
+@dataclass
+class PropertyInfo:
+    """Property metadata from a source table."""
+    property_id: str
+    property_type: str
+    property_name: str
+    hierarchical_level: Optional[int]
+    property_comment: str = ""
+    # (table_num, row_position) in the lowest-numbered table that prints the row;
+    # orders qualifiers in the unified hierarchy (item 30). Not written to the output.
+    print_order: Tuple[int, int] = (0, 0)
+
+    def to_dict(self) -> dict:
+        return {
+            'property_id': self.property_id,
+            'property_type': self.property_type,
+            'property_name': self.property_name,
+            'hierarchical_level': self.hierarchical_level,
+            'property_comment': self.property_comment
+        }
+
+
+@dataclass
+class ColumnPropertyValue:
+    """A property value for a specific column."""
+    property_id: str
+    property_type: str
+    property_name: str
+    hierarchical_level: Optional[int]
+    value: str
+
+    def to_dict(self) -> dict:
+        return {
+            'level': self.hierarchical_level,
+            'property_type': self.property_type,
+            'property_name': self.property_name,
+            'value': self.value
+        }
+
+
+@dataclass
+class UnifiedColumn:
+    """A column in the unified timeline."""
+    xcol_id: str
+    composite_label: str
+    segment: str
+    property_values: List[ColumnPropertyValue] = field(default_factory=list)
+    population_track: Optional[str] = None
+    source_columns: list = field(default_factory=list)
+
+    @property
+    def table_nums(self) -> Set[int]:
+        return {sc['table_num'] for sc in self.source_columns}
+
+    def to_dict(self) -> dict:
+        return {
+            'xcol_id': self.xcol_id,
+            'composite_label': self.composite_label,
+            'segment': self.segment,
+            'population_track': self.population_track,
+            'property_values': [pv.to_dict() for pv in self.property_values],
+            'source_columns': self.source_columns
+        }
+
+
+class ColumnConsolidator:
+    """Builds unified columns preserving property structure."""
+
+    def __init__(self):
+        self.columns: List[UnifiedColumn] = []
+        self.xcol_counter = 0
+        # Keys: int for hierarchical levels, str (f"q_{type}") for qualifiers
+        self.property_info: Dict[Union[int, str], PropertyInfo] = {}
+        self.max_level = 0
+
+    def _make_xcol_id(self) -> str:
+        """Generate next cross-table column ID."""
+        self.xcol_counter += 1
+        return f"xcol-{self.xcol_counter:03d}"
+
+    def _build_property_lookup(self, table: dict) -> Dict[str, dict]:
+        """Build lookup from property_id to property info."""
+        return {
+            p['property_id']: {
+                'property_type': p.get('property_type', 'other'),
+                'property_name': p.get('property_name', ''),
+                'hierarchical_level': p.get('hierarchical_level'),  # Preserve None
+                'property_comment': p.get('property_comment', ''),
+                'row_position': p['row_position']
+            }
+            for p in table.get('schedule_properties', [])
+        }
+
+    def _unified_property_id(self, prop_id: str, table_num: int) -> str:
+        """Unified id for a new unified property: the table's own id, unless an
+        earlier unified property already carries it (the same local id filed under
+        another level or qualifier key in another table) — then '<id>-t<table>'.
+        A duplicate id left two property_hierarchy entries with one id (item 26g)."""
+        used = {p.property_id for p in self.property_info.values()}
+        return prop_id if prop_id not in used else f"{prop_id}-t{table_num}"
+
+    def _extract_column_properties(self, column: dict, 
+                                    prop_lookup: dict, table_num: int) -> List[ColumnPropertyValue]:
+        """Extract property values for a column."""
+        result = []
+        for cv in column.get('column_values', []):
+            prop_id = cv.get('property_id', '')
+            if prop_id in prop_lookup:
+                info = prop_lookup[prop_id]
+                level = info['hierarchical_level']  # May be None for qualifiers
+                result.append(ColumnPropertyValue(
+                    property_id=prop_id,
+                    property_type=info['property_type'],
+                    property_name=info['property_name'],
+                    hierarchical_level=level,
+                    value=cv.get('value', '')
+                ))
+
+                # Key for property_info: int for hierarchical, str for qualifiers
+                if level is not None:
+                    prop_key = level
+                    self.max_level = max(self.max_level, level)
+                else:
+                    # Include property_name to avoid collision when multiple
+                    # qualifiers share the same type (e.g., two modality rows:
+                    # "Fasting Visit" and "Telephone Visit")
+                    prop_key = f"q_{info['property_type']}_{info['property_name']}"
+                
+                if prop_key not in self.property_info:
+                    self.property_info[prop_key] = PropertyInfo(
+                        property_id=self._unified_property_id(prop_id, table_num),
+                        property_type=info['property_type'],
+                        property_name=info['property_name'],
+                        hierarchical_level=level,
+                        property_comment=info['property_comment'],
+                        print_order=(table_num, info['row_position'])
+                    )
+                else:
+                    known = self.property_info[prop_key]
+                    known.print_order = min(known.print_order,
+                                            (table_num, info['row_position']))
+
+        # Sort: hierarchical by level, then qualifiers as printed (item 30)
+        def sort_key(x):
+            if x.hierarchical_level is not None:
+                return (0, x.hierarchical_level)
+            return (1, prop_lookup[x.property_id]['row_position'])
+        result.sort(key=sort_key)
+        return result
+
+    def process_tables(self, tables: Dict[int, dict], 
+                       tables_by_type: Dict[str, List[int]]):
+        """Process all tables and build unified columns."""
+        # Main timeline
+        for tnum in tables_by_type.get('main_soa', []):
+            self._add_table_columns(tables[tnum], tnum, 'main', None)
+
+        # Continuation and domain tables print the columns of a main_soa table
+        # (identity, inventory item 32 (a)): each column joins the main column it
+        # repeats as a further source column, it does not become a column of its own
+        for tnum in tables_by_type.get('continuation', []) + tables_by_type.get('domain', []):
+            self._align_table_columns(tables[tnum], tnum, tables,
+                                      sorted(tables_by_type.get('main_soa', [])))
+
+        # Track tables have separate timelines for different populations/phases
+        for tnum in tables_by_type.get('track', []):
+            table = tables[tnum]
+            meta = table['table_metadata']
+            track = meta.get('track_label') or detect_population_track(
+                meta.get('table_purpose', ''),
+                meta.get('table_title', '')
+            ) or f"Track-T{tnum}"
+            self._add_table_columns(table, tnum, 'track', track)
+
+        # Subsidiary
+        for tnum in tables_by_type.get('subsidiary', []):
+            self._add_table_columns(tables[tnum], tnum, 'subsidiary', None)
+
+    def _add_table_columns(self, table: dict, table_num: int, 
+                           segment: str, track: Optional[str]):
+        """Add columns from a table."""
+        table_id = table['table_metadata']['table_id']
+        prop_lookup = self._build_property_lookup(table)
+
+        data_cols = [
+            c for c in table['schedule_columns']
+            if not c.get('is_label_column', False)
+        ]
+
+        for col in data_cols:
+            prop_values = self._extract_column_properties(col, prop_lookup, table_num)
+
+            ucol = UnifiedColumn(
+                xcol_id=self._make_xcol_id(),
+                composite_label=col.get('composite_label', ''),
+                segment=segment,
+                property_values=prop_values,
+                population_track=track
+            )
+            ucol.source_columns.append({
+                'table_id': table_id,
+                'table_num': table_num,
+                'column_id': col['column_id'],
+                'column_position': col['column_position']
+            })
+            self.columns.append(ucol)
+
+    def _column_signature(self, column: dict, prop_lookup: dict) -> list:
+        """What a column is, for identity: each header value with the property it
+        sits in (type, name, level) and its merge flag, in the column's order.
+        Markers and linked annotations are not part of it (item 32 (a))."""
+        return [
+            (prop_lookup[cv['property_id']]['property_type'],
+             prop_lookup[cv['property_id']]['property_name'],
+             prop_lookup[cv['property_id']]['hierarchical_level'],
+             cv.get('value', ''),
+             cv.get('is_merged', False))
+            for cv in column.get('column_values', [])
+        ]
+
+    def _align_table_columns(self, table: dict, table_num: int,
+                             tables: Dict[int, dict], main_nums: List[int]):
+        """Join a continuation or domain table's columns to the main_soa table it
+        prints the columns of: same number of data columns, and column by column
+        the same signature. Exactly one main_soa table must match; none, or more
+        than one, stops consolidation (item 32 (a))."""
+        meta = table['table_metadata']
+        prop_lookup = self._build_property_lookup(table)
+        data_cols = [c for c in table['schedule_columns'] if not c.get('is_label_column', False)]
+        signature = [self._column_signature(c, prop_lookup) for c in data_cols]
+
+        matches = []
+        for mnum in main_nums:
+            main = tables[mnum]
+            main_lookup = self._build_property_lookup(main)
+            main_cols = [c for c in main['schedule_columns'] if not c.get('is_label_column', False)]
+            if [self._column_signature(c, main_lookup) for c in main_cols] == signature:
+                matches.append(mnum)
+        if len(matches) != 1:
+            raise ValueError(
+                f"Table {table_num} ({meta['table_type']}) must print the columns of exactly "
+                f"one main_soa table; it matches {matches or 'none'} of {main_nums} "
+                f"(inventory item 32 (a))")
+
+        ucols = [u for u in self.columns if u.source_columns[0]['table_num'] == matches[0]]
+        for ucol, col in zip(ucols, data_cols):
+            ucol.source_columns.append({
+                'table_id': meta['table_id'],
+                'table_num': table_num,
+                'column_id': col['column_id'],
+                'column_position': col['column_position']
+            })
+
+    def get_columns_by_segment(self) -> Dict[str, List[UnifiedColumn]]:
+        """Get columns organized by segment."""
+        by_segment = defaultdict(list)
+        for col in self.columns:
+            by_segment[col.segment].append(col)
+        return dict(by_segment)
+
+    def get_property_hierarchy(self) -> List[PropertyInfo]:
+        """Get unified property hierarchy (hierarchical first, then qualifiers)."""
+        # Separate hierarchical (int keys) from qualifiers (str keys)
+        hierarchical = [(k, v) for k, v in self.property_info.items() if isinstance(k, int)]
+        qualifiers = [(k, v) for k, v in self.property_info.items() if isinstance(k, str)]
+        
+        # Sort hierarchical by level, qualifiers as printed in the lowest-numbered
+        # table that has the row (item 30)
+        hierarchical.sort(key=lambda x: x[0])
+        qualifiers.sort(key=lambda x: x[1].print_order)
+        
+        return [v for _, v in hierarchical] + [v for _, v in qualifiers]
+
+
+# =============================================================================
+# Annotation Consolidation
+# =============================================================================
+
+def is_table_scope_annotation(annot: dict) -> bool:
+    """A table-wide note (prompt §6): no element carries its marker, and every
+    marker_location is a schedule_property location — the table-scope convention.
+    Such a note binds nothing by design; it is not an orphan (item 25l)."""
+    refs = annot.get('referenced_elements', {})
+    if any(refs.get(k) for k in ('property_ids', 'column_ids', 'activity_ids', 'cell_references')):
+        return False
+    locs = annot.get('marker_locations') or []
+    return bool(locs) and all(loc.get('location_type') == 'schedule_property' for loc in locs)
+
+
+def normalize_annotation_text(text: str) -> str:
+    """Normalize annotation text for duplicate detection."""
+    # Lowercase, collapse whitespace, strip
+    return ' '.join(text.lower().split())
+
+
+@dataclass
+class UnifiedAnnotation:
+    """An annotation consolidated across tables."""
+    xannot_id: str
+    annotation_type: str
+    annotation_text: str
+    normalized_text: str
+    source_occurrences: list = field(default_factory=list)
+    referenced_xacts: list = field(default_factory=list)
+    referenced_xcols: list = field(default_factory=list)
+    referenced_props: list = field(default_factory=list)
+    cell_references: list = field(default_factory=list)
+    table_scope: bool = False
+    document_references: list = field(default_factory=list)
+    placeholder_reason: Optional[str] = None
+    review_note: Optional[str] = None
+
+    def add_occurrence(self, table_num: int, marker: str, annot_id: str):
+        """Add a source occurrence."""
+        self.source_occurrences.append({
+            'table_num': table_num,
+            'marker': marker,
+            'annotation_id': annot_id
+        })
+
+    def get_display_markers(self) -> str:
+        """Generate human-readable marker display (e.g., 'T1:e, T2-4:a')."""
+        if not self.source_occurrences:
+            return ""
+        
+        # Group by marker
+        by_marker: Dict[str, List[int]] = defaultdict(list)
+        for occ in self.source_occurrences:
+            by_marker[occ['marker']].append(occ['table_num'])
+        
+        parts = []
+        for marker, tables in sorted(by_marker.items(), key=lambda x: min(x[1])):
+            tables = sorted(tables)
+            if len(tables) == 1:
+                parts.append(f"T{tables[0]}:{marker}")
+            elif tables == list(range(min(tables), max(tables) + 1)):
+                # Consecutive range
+                parts.append(f"T{min(tables)}-{max(tables)}:{marker}")
+            else:
+                parts.append(f"T{','.join(str(t) for t in tables)}:{marker}")
+        
+        return ", ".join(parts)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON output."""
+        return {
+            'xannot_id': self.xannot_id,
+            'annotation_type': self.annotation_type,
+            'annotation_text': self.annotation_text,
+            'display_markers': self.get_display_markers(),
+            'source_occurrences': self.source_occurrences,
+            'referenced_xacts': self.referenced_xacts,
+            'referenced_xcols': self.referenced_xcols,
+            'referenced_props': self.referenced_props,
+            'cell_references': self.cell_references,
+            'occurrence_count': len(self.source_occurrences),
+            # Exception-based: present only for a table-wide note (item 25l).
+            **({'annotation_scope': 'table'} if self.table_scope else {}),
+            # Present only when the text names a numbered target (item 3).
+            **({'document_references': self.document_references} if self.document_references else {}),
+            **({'placeholder_reason': self.placeholder_reason} if self.placeholder_reason else {}),
+            **({'review_note': self.review_note} if self.review_note is not None else {})
+        }
+
+
+class AnnotationConsolidator:
+    """Consolidates annotations across multiple tables."""
+
+    def __init__(self):
+        self.unified_annotations: List[UnifiedAnnotation] = []
+        self.xannot_counter = 0
+        self.text_to_unified: Dict[str, UnifiedAnnotation] = {}  # normalized_text -> UA
+        self.source_annotation_count = 0
+
+    def _make_xannot_id(self) -> str:
+        """Generate next cross-table annotation ID."""
+        self.xannot_counter += 1
+        return f"xannot-{self.xannot_counter:03d}"
+
+    def process_tables(
+        self,
+        tables: Dict[int, dict],
+        act_to_xact: Dict[Tuple[int, str], str],
+        col_to_xcol: Dict[Tuple[int, str], str],
+        prop_to_xprop: Dict[Tuple[int, str], str]
+    ):
+        """Process annotations from all tables.
+
+        Args:
+            tables: Dict of table_num -> resolved table data
+            act_to_xact: Mapping (table_num, activity_id) -> xact_id
+            col_to_xcol: Mapping (table_num, column_id) -> xcol_id
+            prop_to_xprop: Mapping (table_num, property_id) -> unified property_id
+        """
+        for table_num, table in sorted(tables.items()):
+            annotations = table.get('annotations', [])
+            
+            # Build property_id -> column_ids mapping for this table
+            prop_to_cols: Dict[str, List[str]] = defaultdict(list)
+            for col in table.get('schedule_columns', []):
+                col_id = col.get('column_id', '')
+                for cv in col.get('column_values', []):
+                    prop_id = cv.get('property_id', '')
+                    if prop_id and col_id not in prop_to_cols[prop_id]:
+                        prop_to_cols[prop_id].append(col_id)
+            
+            # Build row_position -> activity_id mapping for marker_locations fallback
+            row_to_act: Dict[int, str] = {}
+            for act in table.get('activities', []):
+                rp = act.get('row_position')
+                aid = act.get('activity_id', '')
+                if rp is not None and aid:
+                    row_to_act[rp] = aid
+
+            for annot in annotations:
+                self.source_annotation_count += 1
+                self._process_annotation(annot, table_num, act_to_xact, col_to_xcol, prop_to_cols, row_to_act, prop_to_xprop)
+
+    def _process_annotation(
+        self,
+        annot: dict,
+        table_num: int,
+        act_to_xact: Dict[Tuple[int, str], str],
+        col_to_xcol: Dict[Tuple[int, str], str],
+        prop_to_cols: Dict[str, List[str]],
+        row_to_act: Dict[int, str],
+        prop_to_xprop: Dict[Tuple[int, str], str]
+    ):
+        """Process a single annotation."""
+        text = annot.get('annotation_text', '')
+        normalized = normalize_annotation_text(text)
+        marker = annot.get('annotation_marker', '')
+        annot_id = annot.get('annotation_id', '')
+        annot_type = annot.get('annotation_type', 'footnote')
+        
+        # Map referenced elements to cross-table IDs
+        refs = annot.get('referenced_elements', {})
+        table_scope = is_table_scope_annotation(annot)
+        
+        xacts = []
+        for act_id in refs.get('activity_ids', []):
+            xact = act_to_xact.get((table_num, act_id))
+            if xact and xact not in xacts:
+                xacts.append(xact)
+        
+        # Property references: a schedule_property location scopes the annotation
+        # to that property row, not to whatever activity shares its row number.
+        xprops = []
+        for prop_id in refs.get('property_ids', []):
+            xprop = prop_to_xprop.get((table_num, prop_id))
+            if xprop and xprop not in xprops:
+                xprops.append(xprop)
+
+        # Fallback: if no activity_ids resolved, use marker_locations.
+        # This catches instruction-style annotations where markers were placed
+        # in a separate column (not on activity rows), so the resolver couldn't
+        # map them to activity_ids — but marker_locations preserves row_position.
+        # Only activity_name and schedule_cell locations may bind an activity:
+        # a schedule_property (or synthesized table-scope) location merely shares
+        # a row NUMBER with whatever activity sits at that position in each
+        # table. Binding through it asserted 52 property/table-scope notes
+        # against unrelated activities across 10 protocols.
+        if not xacts:
+            for loc in annot.get('marker_locations', []):
+                if loc.get('location_type') not in ('activity_name', 'schedule_cell'):
+                    continue
+                rp = loc.get('row_position')
+                if rp is not None and rp in row_to_act:
+                    act_id = row_to_act[rp]
+                    xact = act_to_xact.get((table_num, act_id))
+                    if xact and xact not in xacts:
+                        xacts.append(xact)
+        
+        xcols = []
+        # Direct column references only — do NOT expand property references
+        # to columns. Property-to-column expansion is over-broad: an annotation
+        # referencing the "cycle" property would incorrectly map to all columns
+        # including screening and follow-up. Property-level annotations keep
+        # empty referenced_xcols; the annotation text conveys semantic scope.
+        for col_id in refs.get('column_ids', []):
+            xcol = col_to_xcol.get((table_num, col_id))
+            if xcol and xcol not in xcols:
+                xcols.append(xcol)
+        
+        cell_refs = []
+        for cell_ref in refs.get('cell_references', []):
+            xact = act_to_xact.get((table_num, cell_ref.get('activity_id', '')))
+            xcol = col_to_xcol.get((table_num, cell_ref.get('column_id', '')))
+            if xact and xcol:
+                cell_refs.append({'xact_id': xact, 'xcol_id': xcol})
+        
+        # Check for existing annotation with same normalized text. A placeholder
+        # has no text, so it is never merged with another annotation.
+        if annot_type != 'placeholder' and normalized in self.text_to_unified:
+            # Deduplicate: add occurrence to existing
+            ua = self.text_to_unified[normalized]
+            ua.add_occurrence(table_num, marker, annot_id)
+            
+            # Merge referenced elements (avoid duplicates)
+            for xact in xacts:
+                if xact not in ua.referenced_xacts:
+                    ua.referenced_xacts.append(xact)
+            for xcol in xcols:
+                if xcol not in ua.referenced_xcols:
+                    ua.referenced_xcols.append(xcol)
+            for xprop in xprops:
+                if xprop not in ua.referenced_props:
+                    ua.referenced_props.append(xprop)
+            for cell_ref in cell_refs:
+                if cell_ref not in ua.cell_references:
+                    ua.cell_references.append(cell_ref)
+            # Table scope only while every occurrence is table-wide.
+            ua.table_scope = ua.table_scope and table_scope
+        else:
+            # New unique annotation
+            ua = UnifiedAnnotation(
+                xannot_id=self._make_xannot_id(),
+                annotation_type=annot_type,
+                annotation_text=text,
+                normalized_text=normalized,
+                referenced_xacts=xacts,
+                referenced_xcols=xcols,
+                referenced_props=xprops,
+                cell_references=cell_refs,
+                table_scope=table_scope,
+                document_references=[dict(r) for r in annot.get('document_references', [])],
+                placeholder_reason=annot.get('placeholder_reason'),
+                review_note=annot.get('review_note')
+            )
+            ua.add_occurrence(table_num, marker, annot_id)
+            self.unified_annotations.append(ua)
+            if annot_type != 'placeholder':
+                self.text_to_unified[normalized] = ua
+
+    def get_stats(self) -> dict:
+        """Get consolidation statistics."""
+        unified_count = len(self.unified_annotations)
+        dedup_count = self.source_annotation_count - unified_count
+        dedup_percent = round(dedup_count / self.source_annotation_count * 100) if self.source_annotation_count else 0
+        
+        # Count by type
+        by_type: Dict[str, int] = defaultdict(int)
+        for ua in self.unified_annotations:
+            by_type[ua.annotation_type] += 1
+        
+        return {
+            'source_annotation_count': self.source_annotation_count,
+            'unified_annotation_count': unified_count,
+            'deduplicated_count': dedup_count,
+            'deduplication_percent': dedup_percent,
+            'by_type': dict(by_type)
+        }
+
+
+# =============================================================================
+# Validation
+# =============================================================================
+
+@dataclass
+class ConsolidationValidationResult:
+    """Results of consolidated output validation."""
+    structure_valid: bool = True
+    references_valid: bool = True
+    warnings: list = field(default_factory=list)
+    errors: list = field(default_factory=list)
+    
+    @property
+    def is_valid(self) -> bool:
+        return len(self.errors) == 0
+    
+    @property
+    def status(self) -> str:
+        if self.errors:
+            return "failed"
+        elif self.warnings:
+            return "consolidated_with_warnings"
+        else:
+            return "consolidated"
+
+
+# --- Annotation text-integrity gates (warnings only) ----------------------
+# Neither pattern is provably a defect, so both are warnings. They exist because
+# nothing in this validator looked at annotation TEXT, and the NCT04677179
+# fragmentation (one notes-column cell split across the rows it overlapped) got
+# through every structural check.
+SECTION_REF_PATTERN = re.compile(r'\b(section|appendix|attachment)\b', re.I)
+
+# Calibrated over 22 protocols: every clean protocol scores 0-1 adjacent
+# containment pairs; the fragmented NCT04677179 extraction scored 13.
+OVERLAP_MIN_WORDS = 4          # shorter note must have >= this many words
+OVERLAP_SECTION_REF_MAX_WORDS = 10
+OVERLAP_PAIR_THRESHOLD = 3     # warn from this many pairs
+DEGENERATE_TYPE_MIN_ANNOTATIONS = 20
+
+# The opposite failure to fragmentation: two adjacent note cells read as one
+# annotation. Calibrated over 23 collections — the over-merged NCT04677179
+# extraction scored 145/145/114 chars; the only other non-zero scores are 75
+# (a FOLFOX regimen list) and 52 (an injection-timing list), both legitimate
+# repetition inside a single cell.
+SENTENCE_SPLIT_PATTERN = re.compile(r'(?<=[.;:])\s+')
+DUP_BLOCK_MIN_SENTENCE_CHARS = 15   # ignore fragments this short when splitting
+DUP_BLOCK_THRESHOLD_CHARS = 100     # warn from this much repeated text
+
+
+def _is_short_section_ref(text: str) -> bool:
+    """A short 'See Section x.y' cross-reference — legitimately repeated."""
+    words = normalize_annotation_text(text).split()
+    return (len(words) <= OVERLAP_SECTION_REF_MAX_WORDS
+            and bool(SECTION_REF_PATTERN.search(text)))
+
+
+def find_adjacent_text_overlaps(annotations: list) -> List[Tuple[str, str]]:
+    """Consecutive annotations where one's normalized text contains the other's.
+
+    That containment is the signature of a single source note cell split across
+    rows, not of two distinct notes. Short section references and notes under
+    OVERLAP_MIN_WORDS words are excluded — both repeat legitimately.
+    """
+    pairs = []
+    for first, second in zip(annotations, annotations[1:]):
+        text_a = first.get("annotation_text", "")
+        text_b = second.get("annotation_text", "")
+        if _is_short_section_ref(text_a) or _is_short_section_ref(text_b):
+            continue
+        norm_a = normalize_annotation_text(text_a)
+        norm_b = normalize_annotation_text(text_b)
+        if min(len(norm_a.split()), len(norm_b.split())) < OVERLAP_MIN_WORDS:
+            continue
+        if norm_a in norm_b or norm_b in norm_a:
+            pairs.append((first.get("xannot_id", "?"), second.get("xannot_id", "?")))
+    return pairs
+
+
+def longest_duplicated_block(text: str) -> int:
+    """Longest run of consecutive sentences that also appears earlier, in characters.
+
+    Two adjacent note cells merged into one annotation usually repeat a shared
+    opening or closing sentence — the source prints near-identical notes on
+    neighbouring rows. A single cell does not repeat a whole block of itself.
+    """
+    parts = [p.strip() for p in SENTENCE_SPLIT_PATTERN.split(text or "")
+             if len(p.strip()) >= DUP_BLOCK_MIN_SENTENCE_CHARS]
+    best = 0
+    for i in range(len(parts)):
+        for j in range(i + 1, len(parts)):
+            run = 0
+            while (j + run < len(parts) and i + run < j
+                   and parts[i + run] == parts[j + run]):
+                run += 1
+            if run:
+                best = max(best, sum(len(p) for p in parts[i:i + run]))
+    return best
+
+
+def find_over_merged_annotations(annotations: list) -> List[Tuple[str, int]]:
+    """Annotations carrying a repeated block big enough to mean two cells were merged."""
+    hits = []
+    for annot in annotations:
+        size = longest_duplicated_block(annot.get("annotation_text", ""))
+        if size >= DUP_BLOCK_THRESHOLD_CHARS:
+            hits.append((annot.get("xannot_id", "?"), size))
+    return hits
+
+
+def find_cross_table_binding_conflicts(data: dict) -> List[Tuple[str, List[str]]]:
+    """One note text that different tables bind to different activities.
+
+    A unified annotation merges identical text across tables. If the tables disagree
+    about which activity it qualifies, either a binding is wrong or the row it belongs
+    to is missing from one of the tables — a page dropped during extraction shows up
+    this way, since its notes survive in the Comment column and land on whatever row
+    is left. `referenced_xacts` is deduplicated, so a note every table binds to one row
+    yields at most one activity per table; more than that means the note genuinely
+    qualifies several activities (a legend or a multi-row note) and is not a conflict.
+
+    Measured over 22 protocols: 4 conflicts, all worth a look. The same measure run
+    against NCT04677179 before its Table 4 page was restored named the two notes that
+    fingerprint the loss (AESIs and "Locally performed.").
+    """
+    activity_name = {a.get("xact_id"): a.get("activity_name")
+                     for a in data.get("unified_activities", [])}
+    conflicts = []
+    for annot in data.get("unified_annotations", []):
+        tables = {o.get("table_num") for o in annot.get("source_occurrences", [])}
+        names = {activity_name.get(x, x) for x in annot.get("referenced_xacts", [])}
+        if len(tables) > 1 and 1 < len(names) <= len(tables):
+            conflicts.append((annot.get("xannot_id", "?"), sorted(str(n) for n in names)))
+    return conflicts
+
+
+def find_header_bound_annotations(data: dict) -> List[Tuple[str, List[str]]]:
+    """Annotations bound to a section-header row.
+
+    A section header groups activities; it is never itself performed, so a
+    footnote bound to one is either a deliberate group-scope note or a marker
+    misbind (the printed position landed on the header row). The two cannot be
+    told apart structurally — which is why this warns instead of erroring.
+
+    Measured over 22 protocols (2026-08-15): 5 bindings across 4 protocols
+    (NCT03283098, NCT04557384, NCT04573309 ×2, NCT04730349), and on reading,
+    every one is a deliberate group-scope note — e.g. NCT03283098's Pre-HD
+    timing qualifier says "applying to all laboratory assessments" outright.
+    Base rate 5/~750 unified annotations, zero known misbinds: a smell worth
+    surfacing per protocol, not an error class.
+    """
+    headers = {ua.get("xact_id"): ua.get("activity_name")
+               for ua in data.get("unified_activities", [])
+               if ua.get("is_section_header")}
+    findings = []
+    for annot in data.get("unified_annotations", []):
+        bound = [headers[x] for x in annot.get("referenced_xacts", [])
+                 if x in headers]
+        if bound:
+            findings.append((annot.get("xannot_id", "?"), bound))
+    return findings
+
+
+def find_column_note_differences(data: dict) -> List[Tuple[str, str, Dict[int, List[str]]]]:
+    """Unified columns with several source columns whose tables attach different
+    annotations to the column.
+
+    A continuation or domain table prints the main table's columns (item 32 (a)),
+    but each table prints its own header markers. Identity leaves the markers out,
+    and the annotations stay as printed; this reports where the tables differ, so
+    a reviewer can see one table carrying a note the others do not. Returned per
+    column: xcol_id, composite_label, and per table the markers it attaches.
+    """
+    findings = []
+    for cols in data.get("timeline_segments", {}).values():
+        for col in cols:
+            tnums = [sc["table_num"] for sc in col.get("source_columns", [])]
+            if len(tnums) < 2:
+                continue
+            annots = {t: set() for t in tnums}
+            markers = {t: [] for t in tnums}
+            for annot in data.get("unified_annotations", []):
+                if col["xcol_id"] not in annot.get("referenced_xcols", []):
+                    continue
+                for occ in annot.get("source_occurrences", []):
+                    if occ["table_num"] in annots:
+                        annots[occ["table_num"]].add(annot["xannot_id"])
+                        markers[occ["table_num"]].append(occ["marker"])
+            if len({frozenset(v) for v in annots.values()}) > 1:
+                findings.append((col["xcol_id"], col.get("composite_label", ""),
+                                 {t: sorted(m) for t, m in markers.items()}))
+    return findings
+
+
+def is_degenerate_annotation_typing(annotations: list) -> bool:
+    """Every annotation typed source_note across a large set.
+
+    All-footnote is normal (a protocol whose notes are all real footnotes);
+    all-source_note is not — it means a notes/comments column was typed as
+    cross-references instead of footnotes.
+    """
+    if len(annotations) <= DEGENERATE_TYPE_MIN_ANNOTATIONS:
+        return False
+    return {a.get("annotation_type") for a in annotations} == {"source_note"}
+
+
+def validate_consolidated(data: dict) -> ConsolidationValidationResult:
+    """Validate consolidated output structure and cross-references.
+    
+    Checks:
+    - Required top-level fields exist
+    - ID formats follow patterns (xact-NNN, xcol-NNN, xannot-NNN)
+    - Cross-references point to existing IDs
+    - Schedule matrix references valid activities and columns
+    - Annotations reference valid activities and columns
+    - Annotation text integrity (warnings): adjacent-pair containment,
+      degenerate source_note typing
+    """
+    result = ConsolidationValidationResult()
+    
+    # Check required top-level fields
+    required_fields = [
+        "schema_name", "schema_version", "protocol_id",
+        "consolidation_metadata", "unified_activities",
+        "timeline_segments", "schedule_matrix", "unified_annotations"
+    ]
+    for field_name in required_fields:
+        if field_name not in data:
+            result.errors.append(f"Missing required field: {field_name}")
+            result.structure_valid = False
+    
+    if not result.structure_valid:
+        return result
+    
+    # Validate schema identifiers
+    if data.get("schema_name") != "soa-tables-consolidated":
+        result.errors.append(f"Invalid schema_name: {data.get('schema_name')}")
+    
+    # Build sets of valid IDs for cross-reference validation
+    valid_xact_ids: Set[str] = set()
+    valid_xcol_ids: Set[str] = set()
+    
+    # Validate unified_activities
+    xact_pattern = re.compile(r'^xact-\d{3}$')
+    for ua in data.get("unified_activities", []):
+        xact_id = ua.get("xact_id", "")
+        if not xact_pattern.match(xact_id):
+            result.errors.append(f"Invalid xact_id format: {xact_id}")
+        else:
+            valid_xact_ids.add(xact_id)
+        
+        # Check required activity fields
+        if not ua.get("activity_name"):
+            result.warnings.append(f"{xact_id}: empty activity_name")
+        if not ua.get("source_refs"):
+            result.warnings.append(f"{xact_id}: no source_refs")
+    
+    # Validate timeline_segments and collect column IDs
+    xcol_pattern = re.compile(r'^xcol-\d{3}$')
+    valid_segments = {"main", "domain", "track", "subsidiary"}
+    
+    for segment, columns in data.get("timeline_segments", {}).items():
+        if segment not in valid_segments:
+            result.warnings.append(f"Unknown timeline segment: {segment}")
+        
+        for col in columns:
+            xcol_id = col.get("xcol_id", "")
+            if not xcol_pattern.match(xcol_id):
+                result.errors.append(f"Invalid xcol_id format: {xcol_id}")
+            else:
+                valid_xcol_ids.add(xcol_id)
+    
+    # Validate schedule_matrix references
+    for cell in data.get("schedule_matrix", []):
+        xact_id = cell.get("xact_id", "")
+        xcol_id = cell.get("xcol_id", "")
+        
+        if xact_id not in valid_xact_ids:
+            result.errors.append(f"schedule_matrix references unknown xact_id: {xact_id}")
+            result.references_valid = False
+        if xcol_id not in valid_xcol_ids:
+            result.errors.append(f"schedule_matrix references unknown xcol_id: {xcol_id}")
+            result.references_valid = False
+    
+    # Validate unified_annotations
+    xannot_pattern = re.compile(r'^xannot-\d{3}$')
+    valid_prop_ids = {p.get("property_id") for p in data.get("property_hierarchy", [])}
+    for ua in data.get("unified_annotations", []):
+        xannot_id = ua.get("xannot_id", "")
+        if not xannot_pattern.match(xannot_id):
+            result.errors.append(f"Invalid xannot_id format: {xannot_id}")
+        
+        # Validate referenced IDs exist
+        for ref_xact in ua.get("referenced_xacts", []):
+            if ref_xact not in valid_xact_ids:
+                result.errors.append(f"{xannot_id} references unknown xact_id: {ref_xact}")
+                result.references_valid = False
+        
+        for ref_xcol in ua.get("referenced_xcols", []):
+            if ref_xcol not in valid_xcol_ids:
+                result.errors.append(f"{xannot_id} references unknown xcol_id: {ref_xcol}")
+                result.references_valid = False
+
+        for ref_prop in ua.get("referenced_props", []):
+            if ref_prop not in valid_prop_ids:
+                result.errors.append(f"{xannot_id} references unknown property_id: {ref_prop}")
+                result.references_valid = False
+
+
+        for cell_ref in ua.get("cell_references", []):
+            if cell_ref.get("xact_id") not in valid_xact_ids:
+                result.errors.append(f"{xannot_id} cell_ref has unknown xact_id")
+                result.references_valid = False
+            if cell_ref.get("xcol_id") not in valid_xcol_ids:
+                result.errors.append(f"{xannot_id} cell_ref has unknown xcol_id")
+                result.references_valid = False
+    
+        
+        # Warn about orphaned annotations (no references at all)
+        has_refs = (
+            ua.get("referenced_xacts")
+            or ua.get("referenced_xcols")
+            or ua.get("referenced_props")
+            or ua.get("cell_references")
+        )
+        if not has_refs and ua.get("annotation_scope") != "table":
+            result.warnings.append(
+                f"{xannot_id}: orphaned annotation \u2014 no referenced_xacts, "
+                f"referenced_xcols, referenced_props, or cell_references"
+            )
+    
+    # Annotation text integrity (warnings only)
+    annotations = data.get("unified_annotations", [])
+    
+    overlap_pairs = find_adjacent_text_overlaps(annotations)
+    if len(overlap_pairs) >= OVERLAP_PAIR_THRESHOLD:
+        shown = ", ".join(f"{a}/{b}" for a, b in overlap_pairs[:5])
+        more = ", \u2026" if len(overlap_pairs) > 5 else ""
+        result.warnings.append(
+            f"{len(overlap_pairs)} adjacent annotation pairs share contained text "
+            f"({shown}{more}) \u2014 likely one note cell fragmented across rows"
+        )
+    
+    for xannot_id, size in find_over_merged_annotations(annotations):
+        result.warnings.append(
+            f"{xannot_id}: {size} characters of its text repeat within the annotation "
+            f"\u2014 likely two adjacent note cells merged into one (\u00a76)"
+        )
+
+    for xannot_id, names in find_cross_table_binding_conflicts(data):
+        result.warnings.append(
+            f"{xannot_id}: bound to different activities by different tables "
+            f"({', '.join(names)}) \u2014 a wrong binding, or the row it belongs to is "
+            f"missing from one of the tables"
+        )
+
+    for xannot_id, names in find_header_bound_annotations(data):
+        result.warnings.append(
+            f"{xannot_id}: bound to section-header row(s) "
+            f"({', '.join(names)}) — a group-scope note, or a marker "
+            f"misbind onto the header; verify the intended scope"
+        )
+
+    for xcol_id, label, markers in find_column_note_differences(data):
+        shown = "; ".join(f"T{t}: {', '.join(m) or 'none'}" for t, m in markers.items())
+        result.warnings.append(
+            f"{xcol_id} ({label}): the tables that print this column attach different "
+            f"annotations to it ({shown}) \u2014 kept as printed; check whether one "
+            f"table carries a note the others do not"
+        )
+
+    if is_degenerate_annotation_typing(annotations):
+        result.warnings.append(
+            f"all {len(annotations)} annotations typed source_note \u2014 a notes/"
+            f"comments column should yield footnotes (all-footnote is normal)"
+        )
+    
+    # Validate property_hierarchy completeness against source tables
+    consolidated_props = data.get("property_hierarchy", [])
+    consolidated_names = {p.get("property_name", "") for p in consolidated_props}
+    source_tables = data.get("consolidation_metadata", {}).get("source_tables", [])
+    for st in source_tables:
+        for sp in st.get("property_hierarchy", []):
+            sp_name = sp.get("property_name", "")
+            if sp_name and sp_name not in consolidated_names:
+                tnum = st.get("table_num", "?")
+                ptype = sp.get("property_type", "?")
+                result.warnings.append(
+                    f"property_hierarchy missing '{sp_name}' "
+                    f"(type={ptype}) from table {tnum}"
+                )
+    return result
+
+
+# =============================================================================
+# Cross-Table Mappings
+# =============================================================================
+
+def build_cross_table_mappings(
+    unified_activities: List[UnifiedActivity],
+    columns: ColumnConsolidator
+) -> Tuple[Dict[Tuple[int, str], str], Dict[Tuple[int, str], str]]:
+    """Build mappings from (table_num, id) to cross-table IDs.
+    
+    Returns:
+        Tuple of (act_to_xact, col_to_xcol) mappings
+    """
+    # Activity lookup: (table_num, activity_id) -> xact_id
+    act_to_xact = {}
+    for ua in unified_activities:
+        for sr in ua.source_refs:
+            act_to_xact[(sr['table_num'], sr['activity_id'])] = ua.xact_id
+
+    # Column lookup: (table_num, column_id) -> xcol_id
+    col_to_xcol = {}
+    for ucol in columns.columns:
+        for sc in ucol.source_columns:
+            col_to_xcol[(sc['table_num'], sc['column_id'])] = ucol.xcol_id
+
+    return act_to_xact, col_to_xcol
+
+
+def build_prop_to_xprop(
+    tables: Dict[int, dict],
+    property_info: Dict[Union[int, str], 'PropertyInfo']
+) -> Dict[Tuple[int, str], str]:
+    """Build mapping from (table_num, property_id) to the unified property_id.
+
+    Inverts ColumnConsolidator.property_info: a table property joins the unified
+    hierarchy through its hierarchical level, or its type+name qualifier key,
+    exactly as _extract_column_properties files it. Properties no column value
+    references never enter property_info and are left unmapped.
+    """
+    mapping: Dict[Tuple[int, str], str] = {}
+    for table_num, table in tables.items():
+        for p in table.get('schedule_properties', []):
+            level = p.get('hierarchical_level')
+            if level is not None:
+                prop_key: Union[int, str] = level
+            else:
+                prop_key = f"q_{p.get('property_type', 'other')}_{p.get('property_name', '')}"
+            info = property_info.get(prop_key)
+            if info:
+                mapping[(table_num, p.get('property_id', ''))] = info.property_id
+    return mapping
+
+
+# =============================================================================
+# Schedule Matrix
+# =============================================================================
+
+def build_schedule_matrix(
+    tables: Dict[int, dict],
+    act_to_xact: Dict[Tuple[int, str], str],
+    col_to_xcol: Dict[Tuple[int, str], str]
+) -> List[dict]:
+    """Build matrix mapping (xact_id, xcol_id) -> cell data.
+    
+    Args:
+        tables: Dict of table_num -> resolved table data
+        act_to_xact: Mapping (table_num, activity_id) -> xact_id
+        col_to_xcol: Mapping (table_num, column_id) -> xcol_id
+    
+    Returns:
+        List of schedule cells with consolidated values
+    """
+    # Build matrix
+    matrix: Dict[Tuple[str, str], dict] = {}
+    for tnum, table in tables.items():
+        for sched in table['activity_schedule']:
+            xact = act_to_xact.get((tnum, sched['activity_id']))
+            xcol = col_to_xcol.get((tnum, sched['column_id']))
+
+            if xact and xcol:
+                key = (xact, xcol)
+                if key not in matrix:
+                    matrix[key] = {'values': {}}
+
+                if sched.get('cell_value'):
+                    matrix[key]['values'][tnum] = sched['cell_value']
+
+    # Compute consolidated values and convert to list
+    result = []
+    for (xact, xcol), data in matrix.items():
+        values = list(data['values'].values())
+        unique = set(v for v in values if v)
+
+        if len(unique) == 1:
+            consolidated = unique.pop()
+        elif len(unique) > 1:
+            consolidated = "[" + ", ".join(sorted(unique)) + "]"
+        else:
+            consolidated = ""
+
+        if consolidated:
+            result.append({
+                'xact_id': xact,
+                'xcol_id': xcol,
+                'consolidated_value': consolidated,
+                'source_values': {str(k): v for k, v in data['values'].items()}
+            })
+
+    return result
+
+
+# =============================================================================
+# Core Consolidation Function
+# =============================================================================
+
+def consolidate_tables(protocol_id: str, resolved_files: List[Path],
+                       corrections_doc: Optional[dict] = None) -> dict:
+    """Consolidate multiple resolved tables into unified structure.
+    
+    Args:
+        protocol_id: Protocol identifier
+        resolved_files: List of paths to resolved JSON files
+        corrections_doc: The protocol's consolidation corrections sidecar
+            (soa-consolidation-corrections), when it has one
+        
+    Returns:
+        Consolidated JSON data structure
+    """
+    # Load tables
+    tables = {}
+    for f in resolved_files:
+        with open(f) as fp:
+            data = json.load(fp)
+        tables[data['table_metadata']['table_number']] = data
+
+    # Open judgement calls from every table, tagged with their table. Ids are
+    # protocol-unique by contract (extraction schema), so a clash is a defect.
+    review_items = [
+        {"table_number": num, **item}
+        for num, t in sorted(tables.items())
+        for item in t.get("review_items", [])
+    ]
+    seen_ids = [item["id"] for item in review_items]
+    if len(seen_ids) != len(set(seen_ids)):
+        raise ValueError(f"{protocol_id}: review_items ids are not unique across tables: {sorted(seen_ids)}")
+
+    # Classify by type
+    tables_by_type = defaultdict(list)
+    for num, t in tables.items():
+        tables_by_type[t['table_metadata']['table_type']].append(num)
+
+    # Human decisions on cross-table matches, checked against the tables first
+    decisions, refinements = (
+        index_corrections(corrections_doc, protocol_id, tables) if corrections_doc else ({}, [])
+    )
+
+    # Activity consolidation
+    act_consolidator = ActivityConsolidator(decisions)
+
+    # Process main tables first. Only the first (lowest-numbered) main_soa table is
+    # the base; a further main_soa table is matched against it like any other table.
+    # Base tables never match each other, so with every main table as a base a study
+    # with several main schedules split into parallel activity sets (inventory item 10).
+    for i, num in enumerate(sorted(tables_by_type.get('main_soa', []))):
+        act_consolidator.process_table(tables[num], num, is_base=(i == 0),
+                                       merge_review_matches=False)
+
+    # Process remaining tables (except reference)
+    for num in sorted(tables.keys()):
+        if num in tables_by_type.get('main_soa', []):
+            continue
+        if num in tables_by_type.get('reference', []):
+            continue
+        act_consolidator.process_table(tables[num], num, is_base=False,
+                                       merge_review_matches=False)
+
+    act_consolidator.check_all_decisions_applied()
+    table_refines = act_consolidator.apply_refinements(refinements)
+
+    # Cross-table matches a reviewer can decide: every source row merged on a
+    # fuzzy score or by a decision, every row split off, and every near match.
+    # One is decided exactly when a sidecar entry names it.
+    review_matches = [
+        ref for ua in act_consolidator.unified_activities for ref in ua.source_refs
+        if 'fuzzy' in ref['match_status'] or 'decision' in ref
+    ] + [hint for ua in act_consolidator.unified_activities for hint in ua.near_matches]
+    review_decided = sum(1 for m in review_matches if 'decision' in m)
+
+    # Resolve parent_xact_id references now that all activities exist
+    act_consolidator.resolve_parent_references()
+    
+    # Compute display_order for hierarchical presentation
+    act_consolidator.compute_display_order()
+
+    # Column consolidation
+    col_consolidator = ColumnConsolidator()
+    col_consolidator.process_tables(tables, tables_by_type)
+
+    # Build cross-table mappings (used by matrix and annotation consolidation)
+    act_to_xact, col_to_xcol = build_cross_table_mappings(
+        act_consolidator.unified_activities,
+        col_consolidator
+    )
+
+    # Build schedule matrix
+    matrix = build_schedule_matrix(tables, act_to_xact, col_to_xcol)
+
+    # Annotation consolidation
+    annot_consolidator = AnnotationConsolidator()
+    prop_to_xprop = build_prop_to_xprop(tables, col_consolidator.property_info)
+    annot_consolidator.process_tables(tables, act_to_xact, col_to_xcol, prop_to_xprop)
+
+    # A 'Table N' reference that names one of this protocol's extracted tables
+    # also carries that table's number. Matched on the printed title only
+    # ('Table 4. Schedule of ...'); a printed number borne by two titles links nothing.
+    printed_numbers = defaultdict(list)
+    for num, t in tables.items():
+        title_number = re.match(r'\s*Table\s+(\d+(?:[.\-–]\d+)*)', t['table_metadata'].get('table_title', ''), re.I)
+        if title_number:
+            printed_numbers[title_number.group(1)].append(num)
+    for ua in annot_consolidator.unified_annotations:
+        for ref in ua.document_references:
+            if ref['kind'] == 'table' and len(printed_numbers.get(ref['target'], [])) == 1:
+                ref['table_num'] = printed_numbers[ref['target']][0]
+
+    # Calculate stats
+    total_src = sum(
+        len(t['activities']) for t in tables.values()
+        if t['table_metadata']['table_type'] != 'reference'
+    )
+    unified_count = len(act_consolidator.unified_activities)
+    compression = round((1 - unified_count / total_src) * 100) if total_src else 0
+
+    by_segment = col_consolidator.get_columns_by_segment()
+    prop_hierarchy = col_consolidator.get_property_hierarchy()
+
+    # Build output
+    return {
+        "schema_name": "soa-tables-consolidated",
+        "schema_version": "1.7",
+        "protocol_id": protocol_id,
+        "consolidation_metadata": {
+            "consolidated_at": datetime.now(timezone.utc).isoformat(),
+            "consolidator": "soa2usdm.steps.consolidate v1.1",
+            "source_tables": [
+                {
+                    "table_id": t['table_metadata']['table_id'],
+                    "table_num": n,
+                    "table_type": t['table_metadata']['table_type'],
+                    "table_title": t['table_metadata'].get('table_title', ''),
+                    "table_purpose": t['table_metadata'].get('table_purpose', ''),
+                    "track_label": t['table_metadata'].get('track_label', ''),
+                    "activity_count": len(t['activities']),
+                    "column_count": len([
+                        c for c in t['schedule_columns']
+                        if not c.get('is_label_column')
+                    ]),
+                    "annotation_count": len(t.get('annotations', [])),
+                    "property_hierarchy": extract_property_hierarchy(t),
+                    **({"refines": table_refines[n]} if n in table_refines else {})
+                }
+                for n, t in sorted(tables.items())
+            ],
+            "match_stats": act_consolidator.match_stats,
+            "review_stats": {
+                "total": len(review_matches),
+                "open": len(review_matches) - review_decided,
+                "decided": review_decided,
+                "near_matches": sum(len(ua.near_matches) for ua in act_consolidator.unified_activities)
+            },
+            **({"corrections_applied": len(corrections_doc["corrections"])} if corrections_doc else {}),
+            "source_activity_count": total_src,
+            "unified_activity_count": unified_count,
+            "compression_percent": compression,
+            "annotation_stats": annot_consolidator.get_stats()
+        },
+        "property_hierarchy": [p.to_dict() for p in prop_hierarchy],
+        "review_queue": act_consolidator.review_queue,
+        "unified_activities": [ua.to_dict() for ua in act_consolidator.unified_activities],
+        "timeline_segments": {
+            segment: [col.to_dict() for col in cols]
+            for segment, cols in by_segment.items()
+        },
+        "schedule_matrix": matrix,
+        "unified_annotations": [ua.to_dict() for ua in annot_consolidator.unified_annotations],
+        **({"review_items": review_items} if review_items else {})
+    }
+
+
+# =============================================================================
+# Pipeline Step Class
+# =============================================================================
+
+class ConsolidateStep(PipelineStepBase):
+    """Consolidate resolved tables for a protocol."""
+
+    step_name = "consolidate"
+
+    def execute(self, data: dict) -> dict:
+        """Execute consolidation for a protocol.
+        
+        Args:
+            data: Must contain 'source' with protocol_id, collection
+            
+        Returns:
+            Dict with input_files, output_file, and consolidation stats
+        """
+        source = data.get("source", {})
+        protocol_id = source.get("protocol_id")
+        collection = source.get("collection")
+
+        if not protocol_id or not collection:
+            self._log_error("Missing protocol_id or collection in source")
+            return {"input_files": [], "output_file": None}
+
+        # Find resolved files
+        resolved_files = config.find_resolved_files(protocol_id, collection)
+
+        if not resolved_files:
+            self._log_error(
+                "No resolved files found",
+                {"protocol_id": protocol_id, "collection": collection}
+            )
+            return {"input_files": [], "output_file": None}
+
+        self._analytics.record("resolved_files_found", len(resolved_files))
+
+        # The protocol's consolidation corrections sidecar, when it has one
+        sidecar = corrections_path(config.get_consolidated_dir(protocol_id, collection), protocol_id)
+        corrections_doc = json.loads(sidecar.read_text(encoding="utf-8")) if sidecar.exists() else None
+
+        # Run consolidation
+        try:
+            consolidated = consolidate_tables(protocol_id, resolved_files, corrections_doc)
+        except Exception as e:
+            self._log_error(f"Consolidation failed: {e}")
+            return {
+                "input_files": [str(f) for f in resolved_files],
+                "output_file": None,
+                "error": str(e)
+            }
+
+        # Validate consolidated output
+        validation = validate_consolidated(consolidated)
+        if not validation.is_valid:
+            for err in validation.errors:
+                self._log_error(f"Validation: {err}")
+            return {
+                "input_files": [str(f) for f in resolved_files],
+                "output_file": None,
+                "validation_status": validation.status,
+                "validation_errors": validation.errors
+            }
+        
+        # Log warnings but continue
+        for warn in validation.warnings:
+            self._analytics.increment("validation_warnings")
+
+        # Write output
+        output_dir = config.get_consolidated_dir(protocol_id, collection)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file = output_dir / f"{protocol_id}_consolidated.json"
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(consolidated, f, indent=2, ensure_ascii=False)
+
+        # Extract stats for return
+        meta = consolidated['consolidation_metadata']
+        annot_stats = meta.get('annotation_stats', {})
+
+        self._analytics.record("source_activities", meta['source_activity_count'])
+        self._analytics.record("unified_activities", meta['unified_activity_count'])
+        self._analytics.record("compression_percent", meta['compression_percent'])
+        self._analytics.record("source_annotations", annot_stats.get('source_annotation_count', 0))
+        self._analytics.record("unified_annotations", annot_stats.get('unified_annotation_count', 0))
+
+        return {
+            "input_files": [str(f) for f in resolved_files],
+            "output_file": str(output_file),
+            "output_dir": str(output_dir),
+            "tables": len(meta['source_tables']),
+            "source_activities": meta['source_activity_count'],
+            "unified_activities": meta['unified_activity_count'],
+            "compression_percent": meta['compression_percent'],
+            "match_stats": meta['match_stats'],
+            "review_queue_count": len(consolidated['review_queue']),
+            "columns_by_segment": {
+                seg: len(cols)
+                for seg, cols in consolidated['timeline_segments'].items()
+            },
+            "schedule_cells": len(consolidated['schedule_matrix']),
+            "annotation_stats": annot_stats,
+            "validation_status": validation.status,
+            "validation_warnings": validation.warnings
+        }
