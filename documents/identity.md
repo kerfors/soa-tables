@@ -65,6 +65,9 @@ A unified activity, column or annotation is named after its member in the lowest
 `u-t01-r026`, `u-t01-c005`, `u-t01-n-a`. A consolidated schedule cell joins its activity and column:
 `m-t01-r026-t02-c004`.
 
+- Annotations are unified by identical text, so the lowest table can hold more than one member (the same note under
+  two markers). Then the member whose local id sorts first is the anchor. Activities and columns have one member per
+  table; more than one stops minting.
 - A row split off by a correction becomes the anchor of its own item.
 - A merge keeps the anchor of the lower table.
 - An item whose members do not change keeps its IRI, whatever happens to other items.
