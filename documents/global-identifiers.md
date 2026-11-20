@@ -1,6 +1,7 @@
 # Global identifiers — design note
 
-**Status: proposal, 2026-08-23; extended the same day. Nothing here is implemented; this document is the artifact to agree on first.**
+**Status: superseded for Layers 1–3 by [identity.md](identity.md) (2026-11-20). Kept as the 2026-08-23 proposal; its
+`w3id.org/soa2usdm/{release}/{collection}/{protocol}/{item}` scheme is not used.**
 
 Identity in this project has three layers. The top one exists, the bottom one is specified here, and the middle one — the one that matters most — is where the coming semantic/USDM work begins.
 
