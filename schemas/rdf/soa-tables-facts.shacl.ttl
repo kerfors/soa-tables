@@ -1,0 +1,367 @@
+# soa-tables fact model: terms and shapes (single source)
+#
+# The facts of one transcription of one protocol file: source tables, rows,
+# columns, cells and annotations as printed, and the cross-table items
+# consolidation made of them, with page provenance and review status as data.
+# Transcript, not interpretation. Instance IRIs are minted by
+# soa_tables/identity.py (rule: documents/identity.md), never here.
+#
+# Rules for this file:
+# - Every node shape is closed (rdf:type ignored). SHACL has no inheritance of
+#   properties, and sh:closed counts only the shape's own sh:property, so
+#   shared properties are written out in each shape.
+# - sh:class names concrete classes only. No class hierarchy is assumed in the
+#   data or the shapes graph.
+# - Numbers that are not integers are xsd:decimal (exact round trip; rdflib
+#   writes xsd:double with 7 digits).
+# - Values from a closed list are plain strings with sh:in, as in the JSON
+#   Schemas the consolidated JSON follows.
+
+@prefix st:   <https://kerfors.github.io/soa-tables/id/terms/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ============================================================== classes
+
+st:File a rdfs:Class ; rdfs:label "File" ;
+    rdfs:comment "The protocol file of record. IRI {B}sha256/{hex}." .
+st:Page a rdfs:Class ; rdfs:label "Page" ;
+    rdfs:comment "A physical page of a file, from 1. IRI {M}/page/{n}." .
+st:Study a rdfs:Class ; rdfs:label "Study" ;
+    rdfs:comment "IRI {B}study/{studyKey}: the NCT id, or the collection key where there is none." .
+st:Transcription a rdfs:Class ; rdfs:label "Transcription" ;
+    rdfs:comment "One transcription of one file. IRI {M}/soa-tables-v1; it names the graph that holds the facts." .
+
+st:SourceTable a rdfs:Class ; rdfs:label "Source table" ;
+    rdfs:comment "A printed SoA table. Local id t01." .
+st:SourceActivityRow a rdfs:Class ; rdfs:label "Source activity row" ;
+    rdfs:comment "A printed activity row. Local id t01-r026; activity and property rows share one numbering in a table." .
+st:SourcePropertyRow a rdfs:Class ; rdfs:label "Source property row" ;
+    rdfs:comment "A printed header band row (an entry of the table's property hierarchy). Local id t01-r003." .
+st:SourceColumn a rdfs:Class ; rdfs:label "Source column" ;
+    rdfs:comment "A printed column. Local id t01-c005." .
+st:SourceAnnotation a rdfs:Class ; rdfs:label "Source annotation" ;
+    rdfs:comment "A printed note under its marker. Local id t01-n-{marker}, plus -r{row} where a marker repeats in a table." .
+st:SourceCell a rdfs:Class ; rdfs:label "Source cell" ;
+    rdfs:comment "A printed schedule cell. Local id t01-r026-c005. Its page is its row's page." .
+
+st:UnifiedActivity a rdfs:Class ; rdfs:label "Unified activity" ;
+    rdfs:comment "A cross-table activity. Local id u- + its member row in the lowest table." .
+st:UnifiedProperty a rdfs:Class ; rdfs:label "Unified property" ;
+    rdfs:comment "A header band of the consolidated table. Local id u- + its member property row in the lowest table; members found with consolidation's key (level, or type and name without level)." .
+st:UnifiedColumn a rdfs:Class ; rdfs:label "Unified column" ;
+    rdfs:comment "A cross-table column. Local id u- + its member column in the lowest table." .
+st:ColumnPropertyValue a rdfs:Class ; rdfs:label "Column property value" ;
+    rdfs:comment "One value in a unified column's header, by position in consolidation's order. Local id u-t01-c005-v01." .
+st:ConsolidatedCell a rdfs:Class ; rdfs:label "Consolidated cell" ;
+    rdfs:comment "A cell of the consolidated schedule. Local id m-{activity anchor}-{column anchor}." .
+st:UnifiedAnnotation a rdfs:Class ; rdfs:label "Unified annotation" ;
+    rdfs:comment "A note unified across tables by identical text. Local id u- + its anchor annotation." .
+st:DocumentReference a rdfs:Class ; rdfs:label "Document reference" ;
+    rdfs:comment "A reference in a note to another part of the document, by position. Local id u-t01-n-a-d01." .
+
+st:Match a rdfs:Class ; rdfs:label "Match" ;
+    rdfs:comment "A pair of source activity rows consolidation merged on similarity or by a decision, split by a decision, or kept apart as a near match. The pairs are the items of visualize.build_matches_model (source and target row). Local id match-{rowA}--{rowB}, rows sorted." .
+st:Decision a rdfs:Class ; rdfs:label "Decision" ;
+    rdfs:comment "An entry of the consolidation corrections sidecar. Local id decision-{entry id}." .
+
+# ============================================================== properties
+
+# file, page, study, transcription
+st:sha256            a rdf:Property ; rdfs:label "sha256" ; rdfs:comment "SHA-256 of the file's bytes, 64 lowercase hex characters." .
+st:pageNumber        a rdf:Property ; rdfs:label "page number" ; rdfs:comment "Physical page in the file, from 1." .
+st:inFile            a rdf:Property ; rdfs:label "in file" .
+st:studyKey          a rdf:Property ; rdfs:label "study key" .
+st:ofFile            a rdf:Property ; rdfs:label "of file" .
+st:aboutStudy        a rdf:Property ; rdfs:label "about study" .
+st:consolidatedAt    a rdf:Property ; rdfs:label "consolidated at" .
+st:consolidator      a rdf:Property ; rdfs:label "consolidator" ; rdfs:comment "The consolidation step and its version, as written in the consolidated JSON." .
+st:schemaVersion     a rdf:Property ; rdfs:label "schema version" ; rdfs:comment "schema_version of the consolidated JSON read." .
+st:collectionsCommit a rdf:Property ; rdfs:label "collections commit" ; rdfs:comment "The collections HEAD the inputs were read at (clean tree)." .
+st:codeCommit        a rdf:Property ; rdfs:label "code commit" ; rdfs:comment "The soa-tables commit that built the graph." .
+
+# tables, rows, columns, annotations, cells
+st:tableNumber       a rdf:Property ; rdfs:label "table number" .
+st:tableType         a rdf:Property ; rdfs:label "table type" .
+st:title             a rdf:Property ; rdfs:label "title" .
+st:purpose           a rdf:Property ; rdfs:label "purpose" ; rdfs:comment "table_purpose: prose written by the extraction model." .
+st:trackLabel        a rdf:Property ; rdfs:label "track label" .
+st:firstPage         a rdf:Property ; rdfs:label "first page" .
+st:lastPage          a rdf:Property ; rdfs:label "last page" .
+st:rowPosition       a rdf:Property ; rdfs:label "row position" ; rdfs:comment "Printed row_position." .
+st:columnPosition    a rdf:Property ; rdfs:label "column position" ; rdfs:comment "Printed column_position." .
+st:inTable           a rdf:Property ; rdfs:label "in table" .
+st:onPage            a rdf:Property ; rdfs:label "on page" ; rdfs:comment "The page the row was read from (extraction source_page; the .verified.json where present). Tiled tables: the page the row was first read from." .
+st:hierarchyPosition a rdf:Property ; rdfs:label "hierarchy position" ; rdfs:comment "Position of a property row in its table's property hierarchy, from 1." .
+st:marker            a rdf:Property ; rdfs:label "marker" ; rdfs:comment "The printed marker, as printed." .
+st:row               a rdf:Property ; rdfs:label "row" .
+st:column            a rdf:Property ; rdfs:label "column" .
+st:value             a rdf:Property ; rdfs:label "value" .
+
+# properties (header bands)
+st:level             a rdf:Property ; rdfs:label "level" ; rdfs:comment "hierarchical_level; absent where the band has none." .
+st:propertyType      a rdf:Property ; rdfs:label "property type" .
+st:propertyName      a rdf:Property ; rdfs:label "property name" .
+
+# matching
+st:matchStatus       a rdf:Property ; rdfs:label "match status" .
+st:matchConfidence   a rdf:Property ; rdfs:label "match confidence" .
+st:matchDecision     a rdf:Property ; rdfs:label "match decision" ; rdfs:comment "The decision that placed this row in its unified activity." .
+
+# unified activities, properties, columns
+st:name              a rdf:Property ; rdfs:label "name" ; rdfs:comment "On a source activity row: the activity name as printed (resolved table). On a unified activity: consolidation's name." .
+st:parent            a rdf:Property ; rdfs:label "parent" .
+st:hierarchyLevel    a rdf:Property ; rdfs:label "hierarchy level" .
+st:displayOrder      a rdf:Property ; rdfs:label "display order" .
+st:qualifiedKey      a rdf:Property ; rdfs:label "qualified key" .
+st:isSectionHeader   a rdf:Property ; rdfs:label "is section header" .
+st:isRedacted        a rdf:Property ; rdfs:label "is redacted" .
+st:nameVariation     a rdf:Property ; rdfs:label "name variation" .
+st:member            a rdf:Property ; rdfs:label "member" ; rdfs:comment "A source element the cross-table item was made from." .
+st:compositeLabel    a rdf:Property ; rdfs:label "composite label" .
+st:segment           a rdf:Property ; rdfs:label "segment" .
+st:populationTrack   a rdf:Property ; rdfs:label "population track" .
+st:propertyValue     a rdf:Property ; rdfs:label "property value" .
+st:position          a rdf:Property ; rdfs:label "position" ; rdfs:comment "Position within the item that holds it, from 1." .
+
+# consolidated cells
+st:activity          a rdf:Property ; rdfs:label "activity" .
+
+# annotations
+st:annotationType    a rdf:Property ; rdfs:label "annotation type" .
+st:text              a rdf:Property ; rdfs:label "text" .
+st:placeholderReason a rdf:Property ; rdfs:label "placeholder reason" .
+st:reviewNote        a rdf:Property ; rdfs:label "review note" .
+st:annotationScope   a rdf:Property ; rdfs:label "annotation scope" .
+st:occurrence        a rdf:Property ; rdfs:label "occurrence" ; rdfs:comment "A printed occurrence of the note." .
+st:refersToActivity  a rdf:Property ; rdfs:label "refers to activity" .
+st:refersToColumn    a rdf:Property ; rdfs:label "refers to column" .
+st:refersToCell      a rdf:Property ; rdfs:label "refers to cell" .
+st:refersToProperty  a rdf:Property ; rdfs:label "refers to property" .
+st:documentReference a rdf:Property ; rdfs:label "document reference" .
+st:referenceKind     a rdf:Property ; rdfs:label "reference kind" .
+st:target            a rdf:Property ; rdfs:label "target" ; rdfs:comment "The reference as printed (section number, appendix name, ...)." .
+
+# review
+st:matchedRow        a rdf:Property ; rdfs:label "matched row" .
+st:matchKind         a rdf:Property ; rdfs:label "match kind" ; rdfs:comment "merged, split or separate (near match kept apart), as visualize.build_matches_model names them." .
+st:score             a rdf:Property ; rdfs:label "score" .
+st:reviewStatus      a rdf:Property ; rdfs:label "review status" ; rdfs:comment "decided or open, computed by visualize.build_matches_model (the function behind the page's 'n open of N')." .
+st:decidedBy         a rdf:Property ; rdfs:label "decided by" .
+st:op                a rdf:Property ; rdfs:label "op" .
+st:decisionSource    a rdf:Property ; rdfs:label "decision source" .
+st:decisionTarget    a rdf:Property ; rdfs:label "decision target" ; rdfs:comment "For op refines, the unified activity refined; for keep, split and merge, the source row the sidecar names." .
+st:reason            a rdf:Property ; rdfs:label "reason" .
+st:decidedByPerson   a rdf:Property ; rdfs:label "decided by person" .
+st:decidedAt         a rdf:Property ; rdfs:label "decided at" .
+
+# ============================================================== shapes
+
+st:FileShape a sh:NodeShape ;
+    sh:targetClass st:File ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:sha256 ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[0-9a-f]{64}$" ] .
+
+st:PageShape a sh:NodeShape ;
+    sh:targetClass st:Page ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:pageNumber ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ,
+        [ sh:path st:inFile ; sh:class st:File ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+st:StudyShape a sh:NodeShape ;
+    sh:targetClass st:Study ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:studyKey ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+st:TranscriptionShape a sh:NodeShape ;
+    sh:targetClass st:Transcription ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:ofFile ; sh:class st:File ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:aboutStudy ; sh:class st:Study ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:consolidatedAt ; sh:datatype xsd:dateTime ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:consolidator ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:schemaVersion ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:collectionsCommit ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[0-9a-f]{40}$" ] ,
+        [ sh:path st:codeCommit ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[0-9a-f]{40}$" ] .
+
+# ---------------------------------------------------------- as printed
+
+st:SourceTableShape a sh:NodeShape ;
+    sh:targetClass st:SourceTable ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:tableNumber ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ,
+        [ sh:path st:tableType ; sh:minCount 1 ; sh:maxCount 1 ;
+          sh:in ( "main_soa" "continuation" "domain" "subsidiary" "track" "reference" ) ] ,
+        [ sh:path st:title ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+        [ sh:path st:purpose ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+        [ sh:path st:trackLabel ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+        [ sh:path st:firstPage ; sh:class st:Page ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:lastPage ; sh:class st:Page ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+# rowPosition, inTable, onPage: the same in both row shapes (checked by a test)
+st:SourceActivityRowShape a sh:NodeShape ;
+    sh:targetClass st:SourceActivityRow ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:rowPosition ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ,
+        [ sh:path st:inTable ; sh:class st:SourceTable ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:onPage ; sh:class st:Page ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:name ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:matchStatus ; sh:maxCount 1 ;
+          sh:in ( "new" "exact" "fuzzy_auto" "fuzzy_cross_parent" "fuzzy_review" "decision" ) ] ,
+        [ sh:path st:matchConfidence ; sh:datatype xsd:decimal ; sh:maxCount 1 ] ,
+        [ sh:path st:matchDecision ; sh:class st:Decision ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] .
+
+st:SourcePropertyRowShape a sh:NodeShape ;
+    sh:targetClass st:SourcePropertyRow ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:rowPosition ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ,
+        [ sh:path st:inTable ; sh:class st:SourceTable ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:onPage ; sh:class st:Page ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:level ; sh:datatype xsd:integer ; sh:maxCount 1 ] ,
+        [ sh:path st:propertyType ; sh:minCount 1 ; sh:maxCount 1 ;
+          sh:in ( "epoch" "period" "cycle" "visit" "study_day" "week" "timepoint" "window" "modality" "condition" "visit_attribute" "other" ) ] ,
+        [ sh:path st:propertyName ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:hierarchyPosition ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] .
+
+st:SourceColumnShape a sh:NodeShape ;
+    sh:targetClass st:SourceColumn ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:columnPosition ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ,
+        [ sh:path st:inTable ; sh:class st:SourceTable ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+st:SourceAnnotationShape a sh:NodeShape ;
+    sh:targetClass st:SourceAnnotation ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:marker ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:inTable ; sh:class st:SourceTable ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+st:SourceCellShape a sh:NodeShape ;
+    sh:targetClass st:SourceCell ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:row ; sh:class st:SourceActivityRow ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:column ; sh:class st:SourceColumn ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:value ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+# ---------------------------------------------------------- consolidated
+
+st:UnifiedActivityShape a sh:NodeShape ;
+    sh:targetClass st:UnifiedActivity ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:name ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:parent ; sh:class st:UnifiedActivity ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
+        [ sh:path st:hierarchyLevel ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:displayOrder ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:qualifiedKey ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+        [ sh:path st:isSectionHeader ; sh:datatype xsd:boolean ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:isRedacted ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ,
+        [ sh:path st:nameVariation ; sh:datatype xsd:string ] ,
+        [ sh:path st:matchStatus ; sh:minCount 1 ; sh:maxCount 1 ;
+          sh:in ( "new" "exact" "fuzzy_auto" "fuzzy_cross_parent" "fuzzy_review" "decision" ) ] ,
+        [ sh:path st:matchConfidence ; sh:datatype xsd:decimal ; sh:maxCount 1 ] ,
+        [ sh:path st:member ; sh:class st:SourceActivityRow ; sh:nodeKind sh:IRI ; sh:minCount 1 ] .
+
+st:UnifiedPropertyShape a sh:NodeShape ;
+    sh:targetClass st:UnifiedProperty ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:level ; sh:datatype xsd:integer ; sh:maxCount 1 ] ,
+        [ sh:path st:propertyType ; sh:minCount 1 ; sh:maxCount 1 ;
+          sh:in ( "epoch" "period" "cycle" "visit" "study_day" "week" "timepoint" "window" "modality" "condition" "visit_attribute" "other" ) ] ,
+        [ sh:path st:propertyName ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:member ; sh:class st:SourcePropertyRow ; sh:nodeKind sh:IRI ; sh:minCount 1 ] .
+
+st:UnifiedColumnShape a sh:NodeShape ;
+    sh:targetClass st:UnifiedColumn ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:compositeLabel ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:segment ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( "main" "domain" "track" "subsidiary" ) ] ,
+        [ sh:path st:populationTrack ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+        [ sh:path st:propertyValue ; sh:class st:ColumnPropertyValue ; sh:nodeKind sh:IRI ] ,
+        [ sh:path st:member ; sh:class st:SourceColumn ; sh:nodeKind sh:IRI ; sh:minCount 1 ] .
+
+st:ColumnPropertyValueShape a sh:NodeShape ;
+    sh:targetClass st:ColumnPropertyValue ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:position ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ,
+        [ sh:path st:level ; sh:datatype xsd:integer ; sh:maxCount 1 ] ,
+        [ sh:path st:propertyType ; sh:minCount 1 ; sh:maxCount 1 ;
+          sh:in ( "epoch" "period" "cycle" "visit" "study_day" "week" "timepoint" "window" "modality" "condition" "visit_attribute" "other" ) ] ,
+        [ sh:path st:propertyName ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:value ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+st:ConsolidatedCellShape a sh:NodeShape ;
+    sh:targetClass st:ConsolidatedCell ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:activity ; sh:class st:UnifiedActivity ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:column ; sh:class st:UnifiedColumn ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:value ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path prov:wasDerivedFrom ; sh:class st:SourceCell ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+st:UnifiedAnnotationShape a sh:NodeShape ;
+    sh:targetClass st:UnifiedAnnotation ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:annotationType ; sh:minCount 1 ; sh:maxCount 1 ;
+          sh:in ( "footnote" "legend" "abbreviation" "source_note" "continuation_note" "placeholder" ) ] ,
+        [ sh:path st:text ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+        [ sh:path st:placeholderReason ; sh:maxCount 1 ; sh:in ( "redacted" "not_printed" "reviewer_note" ) ] ,
+        [ sh:path st:reviewNote ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+        [ sh:path st:annotationScope ; sh:maxCount 1 ; sh:in ( "table" ) ] ,
+        [ sh:path st:occurrence ; sh:class st:SourceAnnotation ; sh:nodeKind sh:IRI ; sh:minCount 1 ] ,
+        [ sh:path st:refersToActivity ; sh:class st:UnifiedActivity ; sh:nodeKind sh:IRI ] ,
+        [ sh:path st:refersToColumn ; sh:class st:UnifiedColumn ; sh:nodeKind sh:IRI ] ,
+        [ sh:path st:refersToCell ; sh:class st:ConsolidatedCell ; sh:nodeKind sh:IRI ] ,
+        [ sh:path st:refersToProperty ; sh:class st:UnifiedProperty ; sh:nodeKind sh:IRI ] ,
+        [ sh:path st:documentReference ; sh:class st:DocumentReference ; sh:nodeKind sh:IRI ] .
+
+st:DocumentReferenceShape a sh:NodeShape ;
+    sh:targetClass st:DocumentReference ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:position ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ,
+        [ sh:path st:referenceKind ; sh:minCount 1 ; sh:maxCount 1 ;
+          sh:in ( "section" "appendix" "attachment" "table" "figure" ) ] ,
+        [ sh:path st:target ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:tableNumber ; sh:datatype xsd:integer ; sh:maxCount 1 ; sh:minInclusive 1 ] .
+
+# ---------------------------------------------------------- review
+
+st:MatchShape a sh:NodeShape ;
+    sh:targetClass st:Match ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:matchedRow ; sh:class st:SourceActivityRow ; sh:nodeKind sh:IRI ; sh:minCount 2 ; sh:maxCount 2 ] ,
+        [ sh:path st:matchKind ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( "merged" "split" "separate" ) ] ,
+        [ sh:path st:score ; sh:datatype xsd:decimal ; sh:maxCount 1 ] ,
+        [ sh:path st:reviewStatus ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( "decided" "open" ) ] ,
+        [ sh:path st:decidedBy ; sh:class st:Decision ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] .
+
+st:DecisionShape a sh:NodeShape ;
+    sh:targetClass st:Decision ;
+    sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
+    sh:property
+        [ sh:path st:op ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( "keep" "split" "merge" "refines" ) ] ,
+        [ sh:path st:decisionSource ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ;
+          sh:or ( [ sh:class st:SourceActivityRow ] [ sh:class st:SourceTable ] ) ] ,
+        [ sh:path st:decisionTarget ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ;
+          sh:or ( [ sh:class st:SourceActivityRow ] [ sh:class st:UnifiedActivity ] ) ] ,
+        [ sh:path st:reason ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+        [ sh:path st:decidedByPerson ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
+        [ sh:path st:decidedAt ; sh:datatype xsd:dateTime ; sh:maxCount 1 ] .
