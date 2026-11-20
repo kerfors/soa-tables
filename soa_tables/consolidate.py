@@ -361,6 +361,15 @@ class ActivityConsolidator:
                     matched_ua, status, confidence, near, decision = self._apply_decision(
                         entry, matched_ua, status, confidence, near, table_num)
 
+                # A redacted row has no printed name to match on ('CCI' is the text that
+                # replaces the redaction bar), so matching it to another table's row is an
+                # artifact of matcher order, not identity (soa-tables step 2, 2026-11-20:
+                # NCT04677179 paired its CCI rows rotated across Tables 1-4). Such a row is
+                # kept separate; a 'merge' entry in the consolidation corrections still joins it.
+                if matched_ua and decision is None and (act.get('is_redacted', False)
+                                                        or matched_ua.is_redacted):
+                    matched_ua, status, confidence = None, 'new', 0.0
+
                 if matched_ua:
                     matched_ua.add_source(table_id, table_num, act['activity_id'],
                                           act['row_position'], act_name,

@@ -130,13 +130,24 @@ def test_resolved_matches_golden(pipeline_output):
             f"{protocol}: resolved mismatch in {gf.name}"
 
 
+# Cases whose golden lives in the frozen soa2usdm-collections and differs on purpose from what
+# soa-tables now produces. Expected to fail; strict: a case that matches again must be removed here.
+KNOWN_GOLDEN_DIVERGENCE = {
+    "usdm_data/NCT04677179": "redacted rows no longer match across tables (2026-11-20); the golden is "
+                             "frozen soa2usdm output, regenerated in soa-tables-collections (step 5)",
+}
+
+
 def test_consolidated_matches_golden(pipeline_output):
     protocol, produced, golden = pipeline_output
     gf = next((golden / "consolidated").glob("*_consolidated.json"))
     pf = produced / "consolidated" / gf.name
     assert pf.exists(), f"{protocol}: consolidate produced no output"
-    assert scrub(json.loads(pf.read_text())) == scrub(json.loads(gf.read_text())), \
-        f"{protocol}: consolidated mismatch"
+    matches = scrub(json.loads(pf.read_text())) == scrub(json.loads(gf.read_text()))
+    if protocol in KNOWN_GOLDEN_DIVERGENCE:
+        assert not matches, f"{protocol}: matches its golden again; remove it from KNOWN_GOLDEN_DIVERGENCE"
+        pytest.xfail(KNOWN_GOLDEN_DIVERGENCE[protocol])
+    assert matches, f"{protocol}: consolidated mismatch"
 
 
 def consolidated_annotations(produced):
@@ -420,10 +431,10 @@ def test_legend_retype_preserves_already_definitional_types():
 # table's left rule (x = 174-199 px vs a rule at x = 200) and is an overlay, not a cell value. How
 # many rows a band conceals is not determinable from the source.
 EXPECTED_REDACTED_UNIFIED = {
-    "usdm_data/NCT04677179": 6,   # of 64 unified activities
+    "usdm_data/NCT04677179": 24,  # of 82 unified activities; 6 of 64 before redacted rows stopped matching across tables (2026-11-20)
     "usdm_data/NCT05176314": 2,
     "usdm_data/NCT05324124": 1,
-    "fixtures/NCT04677179": 6,
+    "fixtures/NCT04677179": 24,
     "cell_gene_therapy/NCT03489291": 12,  # T1 rows 26-31 + T3 rows 8-13, kept apart by sidecar (item 34)
 }
 
