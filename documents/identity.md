@@ -23,6 +23,7 @@ IRIs are therefore minted from what is printed and where, by code, never by the 
 | File (Manifestation) | `{B}sha256/{hex}` |
 | Page | `{M}/page/{n}` |
 | Transcript element | `{M}/soa-tables-v{k}/{localId}` |
+| Transcription | `{M}/soa-tables-v{k}` |
 | Study | `{B}study/{studyKey}` |
 
 - `{B}` is the base: `https://w3id.org/people/kerfors/soa-tables/`; until that is registered,
@@ -35,6 +36,8 @@ IRIs are therefore minted from what is printed and where, by code, never by the 
 - `{studyKey}` is the NCT id; for a study without one, the collection key (for example `CDISC_Pilot`).
 - `soa-tables-v{k}` is the producer segment. `k` starts at 1 and changes only on a deliberate re-transcription
   (see below).
+- The transcription itself is `{M}/soa-tables-v{k}`: one transcription of one file. In RDF it names the graph that
+  holds the transcript's facts.
 
 ## Local ids
 
@@ -72,6 +75,35 @@ A unified activity, column or annotation is named after its member in the lowest
 - A merge keeps the anchor of the lower table.
 - An item whose members do not change keeps its IRI, whatever happens to other items.
 
+A unified property (a header band of the consolidated table) is named the same way, after its member property row in
+the lowest table: `u-t01-r003`. Property rows share the row numbering with activity rows, so this cannot collide with
+a unified activity. The consolidated JSON does not list a unified property's members; they are found in the resolved
+tables with consolidation's own key (the hierarchical level, or type and name for a row without level), and the
+anchor is the member with the earliest table and row. Check, minting stops on a mismatch: a unified `property_id`
+without suffix is the anchor table's own property id; one with suffix `-t{n}` names the anchor table.
+
+## Parts of an item
+
+Values that only exist inside one item are numbered by their position in it, from 1, two digits:
+
+| Element | localId | From |
+|---|---|---|
+| Column property value | `u-t01-c005-v01` | position in the unified column's property values, in consolidation's order (by level, then rows without level as printed) |
+| Document reference | `u-t01-n-a-d01` | position in the unified annotation's document references |
+
+## Review items
+
+| Element | localId | From |
+|---|---|---|
+| Match | `match-t01-r012--t02-r004` | the two source rows of a cross-table match, local ids sorted |
+| Decision | `decision-ccorr-003` | the entry `id` in the consolidation corrections sidecar |
+
+- A match is a pair of rows the consolidation merged on similarity, kept apart as a near match, or split by a
+  decision. It is named after its two rows, not after the unified activity, so it keeps its IRI when other items are
+  renumbered. Two matches on the same pair stop minting.
+- A decision is named after its sidecar entry. Entry ids are unique within the file and are not renumbered; the entry
+  carries the rows' names, which are checked against the current labels before use (see Re-extraction).
+
 ## Redacted rows
 
 A row whose printed name is a redaction placeholder ("CCI", flagged `is_redacted`) has no printed identity. It is
@@ -93,3 +125,4 @@ A re-extraction is a new transcription of the same file. Its printed positions a
 
 - Mint twice from the same input: the same set of IRIs.
 - Mint for all collections: no two elements share a local id under the same `{M}`.
+- Unified properties: every anchor passes the `property_id` check.
