@@ -5,8 +5,8 @@ A marker with no protocol text behind it becomes annotation_type 'placeholder'
 with an empty annotation_text and a placeholder_reason; text that is not
 protocol text moves to review_note. Both arrive through a corrections sidecar
 (raw stays immutable). The schemas tie type, text and reason together;
-consolidation never merges two placeholders on their (empty) text; grain
-inputs leave placeholders out; pages show the reason in place of the text.
+consolidation never merges two placeholders on their (empty) text; pages
+show the reason in place of the text.
 On the published collections: no annotation text that reads as a placeholder
 or a borrowed equivalent is left untyped.
 """
