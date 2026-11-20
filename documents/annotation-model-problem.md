@@ -9,7 +9,7 @@
 > abbreviations are not annotations; legends still are. Table scope now exists: a table-wide note
 > (marker on no element) is `annotation_scope: "table"` in resolved and consolidated (2026-09-28).
 > Originally written 2026-07-30 after a run of annotation defects that turned out to share one root
-> cause. Companion to `soa2usdm-schema-architecture.md`, which describes the layers as designed; this
+> cause. Companion to `soa-tables-schema-architecture.md`, which describes the layers as designed; this
 > note records where the annotation entity did not hold up in practice, and what was done about it.
 
 ## The problem in one sentence
@@ -212,7 +212,7 @@ Those remain A and B respectively.
 
 ## What is not in question
 
-- The 2D-presentation insight in `soa2usdm-schema-architecture.md` holds. This is not a challenge to
+- The 2D-presentation insight in `soa-tables-schema-architecture.md` holds. This is not a challenge to
   the three-layer design.
 - The mark layer is unaffected. Every defect here is in the annotation layer; `schedule_matrix` has
   been byte-stable throughout.

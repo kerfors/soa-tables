@@ -4,7 +4,7 @@
 
 How to use the extraction prompt and the processing pipeline. The prompt is a standalone file with its own version header — attach it to a new Claude conversation alongside your data files. Layer 1 (extraction) is one non-interactive single pass (below).
 
-For architecture rationale, see [`documents/soa2usdm-schema-architecture.md`](../documents/soa2usdm-schema-architecture.md).
+For architecture rationale, see [`documents/soa-tables-schema-architecture.md`](../documents/soa-tables-schema-architecture.md).
 For table type definitions, see [`documents/soa_table_type_definitions.md`](../documents/soa_table_type_definitions.md).
 
 ---

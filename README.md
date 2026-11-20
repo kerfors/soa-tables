@@ -24,7 +24,7 @@ Layer 1 runs as a single non-interactive Claude pass (PDF→JSON): the model ext
 
 The core processing logic lives in the `soa_tables/` package; a batch notebook (`01_batch.ipynb`) provides the execution wrapper across protocol collections.
 
-See [`documents/soa2usdm-schema-architecture.md`](documents/soa2usdm-schema-architecture.md) for the full design rationale and [`documents/background-and-challenges.md`](documents/background-and-challenges.md) for project history and the key extraction challenges that shaped this architecture.
+See [`documents/soa-tables-schema-architecture.md`](documents/soa-tables-schema-architecture.md) for the full design rationale and [`documents/background-and-challenges.md`](documents/background-and-challenges.md) for project history and the key extraction challenges that shaped this architecture.
 
 ## Repositories
 
@@ -62,10 +62,9 @@ soa-tables/
 │   └── PDF_TO_JSON_PROMPT.md                 # Layer 1 extraction, single pass
 │
 ├── documents/
-│   ├── soa2usdm-schema-architecture.md       # Three-layer design rationale
+│   ├── soa-tables-schema-architecture.md     # Three-layer design rationale
 │   ├── background-and-challenges.md          # Project history and key challenges
 │   ├── soa_table_type_definitions.md         # Table classification (taxonomy)
-│   ├── inventory-improvements.md             # Backlog: open and done items
 │   ├── re-extraction-acceptance-checklist.md # Re-extraction criteria and promotion gate
 │   ├── re-extraction-baseline*.json          # Machine baseline and mined claims (tools/)
 │   └── *.md                                  # Design notes (annotation model, identifiers)

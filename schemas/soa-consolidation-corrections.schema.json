@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://kerfors.github.io/soa2usdm/schemas/soa-consolidation-corrections.json",
+  "$id": "https://kerfors.github.io/soa-tables/schemas/soa-consolidation-corrections.json",
   "title": "SoA Consolidation Corrections Schema",
   "description": "Human decisions on a protocol's cross-table activity matches. One file per protocol, next to the consolidated file; consolidation reads it before matching. Entries name source rows (table_number + activity_id, with activity_name as a check), never unified-activity ids, which are not stable across input changes. The Layer 3 analogue of soa-table-corrections.",
   "type": "object",
