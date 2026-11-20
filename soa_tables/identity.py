@@ -5,11 +5,14 @@ IRI templates ({B} = base, {M} = the protocol file's IRI):
   file           {B}sha256/{hex}          hex = SHA-256 of the file of record, 64 lowercase characters
   page           {M}/page/{n}             n = physical page, from 1
   element        {M}/{producer}/{localId}
+  transcription  {M}/{producer}           names the graph of one transcription of one file
   study          {B}study/{studyKey}      NCT id, or the collection key when there is none
 
 Local ids (one transcription of one file):
   table t01 | row t01-r026 | column t01-c005 | cell t01-r026-c005 | annotation t01-n-{marker}[-r016]
   cross-table: u-{local id of the member in the lowest table} | consolidated cell m-{row anchor}-{column anchor}
+  unified property u-{earliest member row} | column property value {column}-v01 | document reference {note}-d01
+  match match-{row}--{row} (sorted) | decision decision-{sidecar entry id}
 
 Minting fails on a number that does not fit its width and on two elements with the same local id.
 """
@@ -23,6 +26,7 @@ PRODUCER = "soa-tables-v1"
 SEGMENT = re.compile(r"[A-Za-z0-9._-]+")
 HEX64 = re.compile(r"[0-9a-f]{64}")
 TABLE_WIDTH, POSITION_WIDTH = 2, 3
+PART_WIDTH = 2
 
 
 # =============================================================================
@@ -55,6 +59,10 @@ def page_iri(m: str, n: int) -> str:
 
 def element_iri(m: str, local_id: str, producer: str = PRODUCER) -> str:
     return f"{m}/{segment(producer)}/{segment(local_id)}"
+
+
+def transcription_iri(m: str, producer: str = PRODUCER) -> str:
+    return f"{m}/{segment(producer)}"
 
 
 def study_iri(study_key: str, base: str = BASE) -> str:
@@ -112,6 +120,27 @@ def unified_id(member_local_id: str) -> str:
 
 def consolidated_cell_id(row_anchor: str, column_anchor: str) -> str:
     return f"m-{row_anchor}-{column_anchor}"
+
+
+def property_value_id(column_local_id: str, n: int) -> str:
+    """The n-th value (from 1) in a unified column's property_values."""
+    return f"{column_local_id}-v{padded(n, PART_WIDTH)}"
+
+
+def document_reference_id(annotation_local_id: str, n: int) -> str:
+    """The n-th entry (from 1) in a unified annotation's document_references."""
+    return f"{annotation_local_id}-d{padded(n, PART_WIDTH)}"
+
+
+def match_id(row_a: str, row_b: str) -> str:
+    if row_a == row_b:
+        raise ValueError(f"a match needs two rows, got {row_a} twice")
+    a, b = sorted((row_a, row_b))
+    return f"match-{a}--{b}"
+
+
+def decision_id(entry_id: str) -> str:
+    return f"decision-{segment(entry_id)}"
 
 
 # =============================================================================
@@ -220,3 +249,97 @@ def mint_protocol(resolved_tables: list, consolidated: dict) -> set:
         dup = sorted({i for i in ids if ids.count(i) > 1})[:5]
         raise ValueError(f"local ids minted more than once: {dup}")
     return set(ids)
+
+
+# =============================================================================
+# Unified properties, parts of an item, review items (documents/identity.md)
+# =============================================================================
+
+CLASH_ID = re.compile(r"(.+)-t([0-9]+)")
+
+
+def property_key(p: dict):
+    """consolidate.ColumnConsolidator's key for a property row: its level, or q_{type}_{name} without level."""
+    level = p.get("hierarchical_level")
+    return level if level is not None else f"q_{p.get('property_type', 'other')}_{p.get('property_name', '')}"
+
+
+def unified_property_members(resolved_tables: list) -> dict:
+    """{property key: [(table_number, row_position, property_id)], earliest first}, over every property row of
+    every resolved table."""
+    members = {}
+    for r in resolved_tables:
+        t = r["table_metadata"]["table_number"]
+        for p in r["schedule_properties"]:
+            members.setdefault(property_key(p), []).append((t, p["row_position"], p["property_id"]))
+    return {k: sorted(v) for k, v in members.items()}
+
+
+def mint_properties(resolved_tables: list, consolidated: dict, tables: dict) -> dict:
+    """{unified property_id: u-{anchor row}} for the consolidated property_hierarchy. tables: {table_number:
+    mint_table(...) result}. Anchor = the member with the earliest (table, row). Stops when the unified keys and
+    the member keys differ, or a property_id does not name its anchor: a plain id is the anchor row's own
+    property_id; a clash id '{id}-t{n}' has the anchor's own id and n = the anchor table."""
+    members = unified_property_members(resolved_tables)
+    root = {}
+    for p in consolidated["property_hierarchy"]:
+        k = property_key(p)
+        if k in root:
+            raise ValueError(f"unified properties {root[k]} and {p['property_id']} share key {k!r}")
+        root[k] = p["property_id"]
+    if set(root) != set(members):
+        raise ValueError(f"unified property keys and member keys differ: {sorted(map(str, set(root) ^ set(members)))}")
+    pairs = []
+    for k, pid in root.items():
+        t, _, own = members[k][0]
+        clash = CLASH_ID.fullmatch(pid)
+        if (clash.groups() != (own, str(t))) if clash else (pid != own):
+            raise ValueError(f"unified property {pid} (key {k!r}) does not name its anchor: table {t}, {own}")
+        pairs.append((pid, unified_id(tables[t]["rows"][own])))
+    return _unique(pairs, "unified properties")
+
+
+def mint_parts(consolidated: dict, cons: dict) -> dict:
+    """Parts of an item, numbered by position from 1. cons: mint_consolidated(...) result.
+    Returns {'property_values': {(xcol_id, n): id}, 'document_references': {(xannot_id, n): id}}."""
+    values = _unique([((c["xcol_id"], n), property_value_id(cons["columns"][c["xcol_id"]], n))
+                      for seg in consolidated["timeline_segments"].values() for c in seg
+                      for n in range(1, len(c["property_values"]) + 1)], "column property values")
+    refs = _unique([((an["xannot_id"], n), document_reference_id(cons["annotations"][an["xannot_id"]], n))
+                    for an in consolidated["unified_annotations"]
+                    for n in range(1, len(an.get("document_references", [])) + 1)], "document references")
+    return {"property_values": values, "document_references": refs}
+
+
+def mint_review(match_items: list, corrections_doc, tables: dict) -> dict:
+    """match_items: visualize.build_matches_model(...)['items'] (source and target rows by table_number and
+    activity_id); corrections_doc: the consolidation corrections sidecar, or None. tables: {table_number:
+    mint_table(...) result}. Returns {'matches': [id per item, in item order], 'decisions': {entry id: id}}.
+    Two items on the same pair of rows stop minting."""
+    def row(r):
+        return tables[r["table_number"]]["rows"][r["activity_id"]]
+    matches = [match_id(row(it["source"]), row(it["target"])) for it in match_items]
+    _unique(list(enumerate(matches)), "matches (item index)")
+    entries = corrections_doc["corrections"] if corrections_doc else []
+    decisions = _unique([(e["id"], decision_id(e["id"])) for e in entries], "decisions")
+    return {"matches": matches, "decisions": decisions}
+
+
+def mint_all(resolved_tables: list, consolidated: dict, match_items: list, corrections_doc) -> dict:
+    """Every local id of one protocol, by kind: mint_protocol's kinds plus unified properties, parts of an item and
+    review items. Fails on any collision across all of them. Returns {'tables': {table_number: mint_table
+    result}, 'consolidated': mint_consolidated result, 'properties', 'property_values', 'document_references',
+    'matches', 'decisions'}."""
+    ids = list(mint_protocol(resolved_tables, consolidated))
+    tables = {r["table_metadata"]["table_number"]: mint_table(r) for r in resolved_tables}
+    cons = mint_consolidated(consolidated, tables)
+    out = {"tables": tables, "consolidated": cons,
+           "properties": mint_properties(resolved_tables, consolidated, tables),
+           **mint_parts(consolidated, cons), **mint_review(match_items, corrections_doc, tables)}
+    for k in ("properties", "property_values", "document_references", "decisions"):
+        ids.extend(out[k].values())
+    ids.extend(out["matches"])
+    if len(ids) != len(set(ids)):
+        dup = sorted({i for i in ids if ids.count(i) > 1})[:5]
+        raise ValueError(f"local ids minted more than once: {dup}")
+    return out
