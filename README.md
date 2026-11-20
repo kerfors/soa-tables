@@ -26,6 +26,8 @@ The core processing logic lives in the `soa_tables/` package; a batch notebook (
 
 See [`documents/soa-tables-schema-architecture.md`](documents/soa-tables-schema-architecture.md) for the full design rationale and [`documents/background-and-challenges.md`](documents/background-and-challenges.md) for project history and the key extraction challenges that shaped this architecture.
 
+The consolidated SoA has two interfaces: HTML pages for people, and RDF for programs — one TriG file per protocol, the same facts as the consolidated JSON with IRIs minted from the file of record ([`documents/identity.md`](documents/identity.md)). See [`documents/rdf-interface.md`](documents/rdf-interface.md); the fact model is [`schemas/rdf/soa-tables-facts.shacl.ttl`](schemas/rdf/soa-tables-facts.shacl.ttl).
+
 ## Repositories
 
 | Repo | Contents |
@@ -55,7 +57,8 @@ soa-tables/
 │   ├── soa-table-corrections.schema.json    # Layer 1 corrections sidecar
 │   ├── soa-table-resolved.schema.json       # Layer 2
 │   ├── soa-tables-consolidated.schema.json  # Layer 3
-│   └── soa-consolidation-corrections.schema.json  # Layer 3 corrections sidecar (match decisions)
+│   ├── soa-consolidation-corrections.schema.json  # Layer 3 corrections sidecar (match decisions)
+│   └── rdf/soa-tables-facts.shacl.ttl       # RDF fact model: terms + closed shapes (hand-written)
 │
 ├── prompts/
 │   ├── EXTRACTION_WORKFLOW_GUIDE.md          # How to run extraction and the pipeline
@@ -67,6 +70,8 @@ soa-tables/
 │   ├── soa_table_type_definitions.md         # Table classification (taxonomy)
 │   ├── re-extraction-acceptance-checklist.md # Re-extraction criteria and promotion gate
 │   ├── re-extraction-baseline*.json          # Machine baseline and mined claims (tools/)
+│   ├── identity.md                           # How elements are named: IRIs from the file of record
+│   ├── rdf-interface.md                      # The consolidated facts as TriG: content, build, checks
 │   └── *.md                                  # Design notes (annotation model, identifiers)
 │
 ├── docs/                             # Published on GitHub Pages: kerfors.github.io/soa-tables
@@ -89,9 +94,11 @@ soa-tables/
 │   ├── nav.py                       # Shared navigation for all generated pages
 │   ├── page_grid.py                 # Rule-line cell geometry (vector + raster)
 │   ├── row_audit.py                 # RowAuditStep — extracted rows vs the pages
-│   └── review_page.py               # ReviewPageStep — the extraction on its source pages
+│   ├── review_page.py               # ReviewPageStep — the extraction on its source pages
+│   ├── identity.py                  # Mints local ids and IRIs (documents/identity.md)
+│   └── rdf.py                       # Consolidated facts → TriG and back (documents/rdf-interface.md)
 │
-├── tools/                           # Re-extraction harness, the infographic generators and the video scripts (tools/README.md)
+├── tools/                           # Re-extraction harness and the infographic generator (tools/README.md)
 │
 ├── notebooks/
 │   ├── 00_download_extract.ipynb    # Download PDFs, extract SoA pages, scaffold folders
@@ -105,6 +112,9 @@ soa-tables/
 │   ├── test_consolidation_corrections.py  # Consolidation sidecar: ops, stale entries, the matches view
 │   ├── test_document_references.py  # document_references on annotations
 │   ├── test_placeholders.py         # Placeholder annotations: schemas, consolidation, pages
+│   ├── test_identity.py             # Minting: deterministic, no collisions
+│   ├── test_rdf.py                  # RDF: round trip, shapes, identical builds, pages, matches
+│   ├── test_shacl_shapes.py         # The shapes file, valid and broken graphs
 │   └── fixtures/                    # Golden protocols (JSON only), negative controls, pages — tests run standalone
 │
 └── pyproject.toml
@@ -128,6 +138,9 @@ The review page is a proof of concept with two aims: to envision what a user int
 
 **Reviewing cross-table matches (HTML):**
 The consolidated view (`{NCTID}_consolidated.html`) has a section *Matches across tables*. It lists the rows consolidation merged on name similarity and the near matches it kept separate. A reviewer decides each one: `keep`, `split` or `merge`; `refines` states that a table or a row details a row of another table without being merged. The view drafts the entries for `consolidated/{NCTID}_consolidation_corrections.json` and writes nothing. Consolidation reads the sidecar before matching and stops on a stale entry. The collection index shows the state per protocol ('matches: n open of N'). The review page's *Across tables* tab shows the matched rows on their source pages; the decision is made in the consolidated view.
+
+**Building the RDF (Python):**
+`python -m soa_tables.rdf <collection> <protocol_id> -o <protocol_id>_facts.trig` writes one protocol's facts as TriG. It needs the protocol PDF (the file of record) in the protocol folder, and refuses when its inputs or the code have uncommitted changes, since the file is pinned to both commits. See [`documents/rdf-interface.md`](documents/rdf-interface.md).
 
 ## Key Design Decisions
 
