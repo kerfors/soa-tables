@@ -38,8 +38,6 @@ def generate_collections_index_html() -> str:
         title = descriptor.get("title", name)
         description = descriptor.get("description", "")
         links = [f'<a href="{rel}/index.html">Collection index &rarr;</a>']
-        if (collection_path / "activities.html").exists():
-            links.append(f'<a href="{rel}/activities.html">Activities inventory &rarr;</a>')
         cards.append(f'''  <div class="panel card">
     <h3><a href="{rel}/index.html">{esc(title)}</a></h3>
     {f'<p>{esc(description)}</p>' if description else ''}

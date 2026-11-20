@@ -557,6 +557,42 @@ def _render_json_html(json_path: Path, collection_path: Path, protocol_id: str,
     return str(viewer_path.relative_to(collection_path))
 
 
+def _first_token(value: str) -> str:
+    return value.split("_")[0] if value else ""
+
+
+def _last_token_unless_nct(value: str) -> str:
+    parts = value.split("_") if value else []
+    return parts[-1] if (len(parts) >= 2 and not parts[-1].startswith("NCT")) else ""
+
+
+# Closed rule vocabulary for descriptor-declared metadata derivation. A
+# collection whose manifest lacks a column may declare which naming convention
+# fills it (e.g. usdm_data derives sponsor/TA from the d4k folder name). An
+# unknown rule name fails fast with KeyError.
+_DERIVATION_RULES = {
+    "first_token": _first_token,
+    "last_token_unless_nct": _last_token_unless_nct,
+}
+
+
+def _study_fields(meta: dict, descriptor: dict) -> tuple[str, str]:
+    """Resolve sponsor and therapeutic_area for one study.
+
+    Manifest column first; otherwise the collection descriptor's
+    derived_metadata rule for that field; otherwise blank.
+    """
+    derived = descriptor.get("derived_metadata", {})
+    values = {}
+    for field in ("sponsor", "therapeutic_area"):
+        value = str(meta.get(field) or "").strip()
+        if not value and field in derived:
+            spec = derived[field]
+            value = _DERIVATION_RULES[spec["rule"]](str(meta.get(spec["from"]) or ""))
+        values[field] = value
+    return values["sponsor"], values["therapeutic_area"]
+
+
 def generate_index_html(collection: str) -> str:
     """Generate collection index HTML."""
     collection_path = config.get_collection_path(collection)
@@ -564,8 +600,7 @@ def generate_index_html(collection: str) -> str:
     study_meta = load_study_metadata(collection_path)
     descriptor = config.load_collection_descriptor(collection)
     # Sponsor column: the manifest's sponsor, or derived as declared in collection.json
-    # (derived_metadata), the same values as on the Activities page.
-    from .activity_inventory import _study_fields
+    # (derived_metadata).
 
     # Studies the manifest marks as not extractable -- e.g. the posted protocol
     # carries no SoA table. Declared as data in the manifest's excluded_reason
@@ -746,9 +781,6 @@ def generate_index_html(collection: str) -> str:
                   display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
         .header h1 { font-size: 20px; font-weight: 600; }
         .header .sub { font-size: 13px; opacity: .85; margin-top: 3px; }
-        .header .activities-link { padding: 5px 11px; border: 1px solid rgba(255,255,255,0.55); border-radius: 4px;
-            color: #fff; text-decoration: none; font-size: 12px; font-weight: 600; white-space: nowrap; }
-        .header .activities-link:hover { background: rgba(255,255,255,0.12); }
         .crumbs { background: #fff; border-bottom: 1px solid var(--line); padding: 8px 22px; font-size: 12px; color: var(--muted); }
         .crumbs a { color: var(--blue2); text-decoration: none; }
         .crumbs a:hover { text-decoration: underline; }
@@ -816,7 +848,6 @@ def generate_index_html(collection: str) -> str:
             <h1>{esc(collection)}</h1>
             <div class="sub">SoA2USDM — Schedule of Activities Extraction Pipeline · {len(protocols)} protocols · {len(ready)} processed · {len(pending)} pending{excl_meta} · generated {generated_at}</div>
         </div>
-        <a href="activities.html" class="activities-link">Activities &mdash; search across protocols &rarr;</a>
     </div>
     <div class="crumbs"><a href="../../../index.html">Collections</a><span class="sep">›</span><span class="cur">{esc(collection)}</span></div>
 

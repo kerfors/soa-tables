@@ -118,7 +118,6 @@ from soa_tables.visualize import VisualizeStep
 from soa_tables.review_page import ReviewPageStep
 from soa_tables.index_generator import IndexGeneratorStep
 from soa_tables.collections_index import CollectionsIndexStep
-from soa_tables.activity_inventory import ActivityInventoryStep
 from soa_tables.errors import Errors
 from soa_tables.analytics import Analytics
 
@@ -145,8 +144,7 @@ for pid in {studies!r}:
             fail += 1
 print('  per-protocol chain done')
 for name, step, arg in (('index', IndexGeneratorStep, {{'source': {{'collection': '{COLLECTION}'}}}}),
-                        ('root index', CollectionsIndexStep, {{}}),
-                        ('activity inventory', ActivityInventoryStep, {{'source': {{'collection': '{COLLECTION}'}}}})):
+                        ('root index', CollectionsIndexStep, {{}})):
     errs = Errors()
     try:
         r = step(errs, Analytics()).execute(arg)

@@ -58,7 +58,7 @@ The batch notebook runs five steps in sequence:
 | 4 | `VisualizeStep` | — | Consolidated HTML: the unified SoA, with its notes marked where they apply, and the *Matches across tables* section |
 | 5 | `ReviewPageStep` | — | `{NCTID}_review.html`: the extraction against its rendered source pages — rows, marks, notes, review items and cross-table folds drawn where they refer to; drafts sidecar entries, writes nothing |
 
-After all protocols: `IndexGeneratorStep` builds the collection index and renders the reports (refreshing each page's navigation), `CollectionsIndexStep` the root index, `ActivityInventoryStep` the activity inventory.
+After all protocols: `IndexGeneratorStep` builds the collection index and renders the reports (refreshing each page's navigation), `CollectionsIndexStep` the root index.
 
 The collection index follows the workflow. Per table, against the source pages: Source, 1. Extraction, 2. Resolution, Extraction review, Log. Per protocol, across tables: 3. Consolidation (view, JSON, 'matches: n open of N'), Redacted. Where a collection has them: Beyond the SoA (Protocol context) and Towards CDISC (Activity grain: the study's grain page and its JSON, with named tests / unsure counted; Activity routing: the study's routing page and its JSON, with named tests counted by status). The first identity columns are NCT ID (linked to ClinicalTrials.gov) and Sponsor.
 
@@ -80,7 +80,6 @@ from soa_tables.visualize import VisualizeStep
 from soa_tables.review_page import ReviewPageStep
 from soa_tables.index_generator import IndexGeneratorStep
 from soa_tables.collections_index import CollectionsIndexStep
-from soa_tables.activity_inventory import ActivityInventoryStep
 from soa_tables.errors import Errors
 from soa_tables.analytics import Analytics
 
@@ -93,10 +92,9 @@ for step_cls in (ApplyCorrectionsStep, ResolveStep,
                  ConsolidateStep, VisualizeStep, ReviewPageStep):
     data[step_cls.step_name] = step_cls(errors, analytics).execute(data)
 
-# Rebuild the collection index, root index and activity inventory after any protocol change
+# Rebuild the collection index and root index after any protocol change
 IndexGeneratorStep(Errors(), Analytics()).execute({'source': {'collection': COLLECTION}})
 CollectionsIndexStep(Errors(), Analytics()).execute({})
-ActivityInventoryStep(Errors(), Analytics()).execute({'source': {'collection': COLLECTION}})
 
 print(errors.has_errors(), errors.summary())
 ```

@@ -55,8 +55,7 @@ soa-tables/
 │   ├── soa-table-corrections.schema.json    # Layer 1 corrections sidecar
 │   ├── soa-table-resolved.schema.json       # Layer 2
 │   ├── soa-tables-consolidated.schema.json  # Layer 3
-│   ├── soa-consolidation-corrections.schema.json  # Layer 3 corrections sidecar (match decisions)
-│   └── soa2usdm-activity-inventory.schema.json  # Activity inventory (activities.json)
+│   └── soa-consolidation-corrections.schema.json  # Layer 3 corrections sidecar (match decisions)
 │
 ├── prompts/
 │   ├── EXTRACTION_WORKFLOW_GUIDE.md          # How to run extraction and the pipeline
@@ -90,7 +89,6 @@ soa-tables/
 │   ├── visualize.py                 # Consolidated HTML, with the 'Matches across tables' review section
 │   ├── index_generator.py           # Collection index page; renders reports, refreshes nav
 │   ├── collections_index.py         # Root index across collections
-│   ├── activity_inventory.py        # Collection activity inventory (activities.json/.html)
 │   ├── nav.py                       # Shared navigation for all generated pages
 │   ├── page_grid.py                 # Rule-line cell geometry (vector + raster)
 │   ├── row_audit.py                 # RowAuditStep — extracted rows vs the pages

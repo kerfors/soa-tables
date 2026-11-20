@@ -640,16 +640,3 @@ def test_range_fields_are_numeric_column_positions():
         f"banked fixtures carry {a1_in_fixtures} A1-notation range values, expected "
         f"{KNOWN_A1_IN_FIXTURES} — if a fixture was re-banked, update this number")
 
-
-def test_activity_inventory_validates_against_its_schema():
-    """Release A: activities.json has a schema (2.0). Every collection that publishes an
-    inventory must validate against it; the banked fixtures carry none."""
-    import jsonschema
-    schema = json.loads((config.SCHEMAS_DIR / "soa2usdm-activity-inventory.schema.json").read_text())
-    paths = [Path(d) / "activities.json" for d in config.COLLECTIONS.values()
-             if (Path(d) / "activities.json").exists()]
-    if not paths:
-        pytest.skip("no collection with an activities.json is checked out")
-    for path in paths:
-        jsonschema.validate(json.loads(path.read_text()), schema)
-

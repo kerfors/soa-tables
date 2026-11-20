@@ -15,13 +15,12 @@ notebooks = ["pandas", "requests", "pymupdf", "pymupdf4llm", "openpyxl"]
 # Page geometry (soa_tables.page_grid, soa_tables.row_audit) also needs poppler
 # on PATH: pdftoppm, pdftotext, pdfinfo.
 bands = ["numpy"]
-# Collection index and activity inventory: the study manifest (studies_protocols.xlsx) and the
-# rendered extraction logs. Both fail loudly without these.
+# Collection index: the study manifest (studies_protocols.xlsx) and the rendered extraction
+# logs. It fails loudly without these.
 index = ["openpyxl", "markdown"]
 test = ["pytest"]
 
 [project.scripts]
-soa-tables-activities = "soa_tables.activity_inventory:main"
 soa-tables-row-audit = "soa_tables.row_audit:main"
 soa-tables-review-page = "soa_tables.review_page:main"
 
