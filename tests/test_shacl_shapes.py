@@ -83,6 +83,9 @@ def test_row_shapes_agree_on_shared_properties(shapes):
         return out
     activity, prop = shared(ST.SourceActivityRow), shared(ST.SourcePropertyRow)
     assert set(activity) == set(SHARED_ROW_PROPERTIES)
+    min_count = (str(SH.minCount), "1")
+    assert min_count in activity[ST.onPage] and min_count not in prop[ST.onPage]
+    prop[ST.onPage] = sorted(prop[ST.onPage] + [min_count])
     assert activity == prop
 
 
@@ -104,7 +107,7 @@ VALID = {
              ' st:onPage :p3 ; st:matchStatus "exact" .'),
     "row2": ':t02-r001 a st:SourceActivityRow ; st:name "Vital signs, weight" ; st:rowPosition 1 ; st:inTable :t02 ; st:onPage :p3 .',
     "ua": (':u-t01-r001 a st:UnifiedActivity ; st:name "Vital signs" ; st:hierarchyLevel 0 ; st:displayOrder 1 ;'
-           ' st:isSectionHeader false ; st:matchStatus "exact" ; st:member :t01-r001 .'),
+           ' st:isSectionHeader false ; st:parentName "" ; st:matchStatus "exact" ; st:member :t01-r001 .'),
     "decision": ':decision-ccorr-001 a st:Decision ; st:op "keep" ; st:decisionSource :t02-r001 ; st:decisionTarget :t01-r001 .',
     "match": (':match-t01-r001--t02-r001 a st:Match ; st:matchedRow :t01-r001 , :t02-r001 ; st:matchKind "separate" ;'
               ' st:reviewStatus "decided" ; st:decidedBy :decision-ccorr-001 .'),
@@ -125,6 +128,12 @@ def validate(shapes, data):
 
 def test_valid_graph_conforms(shapes):
     assert validate(shapes, graph()) == (True, set())
+
+
+def test_property_row_without_page_conforms(shapes):
+    data = graph(extra=(':t01-r003 a st:SourcePropertyRow ; st:rowPosition 3 ; st:inTable :t01 ;'
+                        ' st:propertyType "epoch" ; st:propertyName "Epoch" ; st:hierarchyPosition 1 .'))
+    assert validate(shapes, data) == (True, set())
 
 
 def test_table_level_refines_conforms(shapes):
@@ -164,6 +173,10 @@ BROKEN = {
         {"extra": (':t01-r003 a st:SourcePropertyRow ; st:rowPosition 3 ; st:inTable :t01 ; st:onPage :p3 ;'
                    ' st:propertyType "epoch" ; st:propertyName "Epoch" ; st:hierarchyPosition 1 ; st:matchStatus "new" .')},
         (ST.matchStatus, SH.ClosedConstraintComponent)),
+    "unified activity without parent name": (
+        {"ua": (':u-t01-r001 a st:UnifiedActivity ; st:name "Vital signs" ; st:hierarchyLevel 0 ; st:displayOrder 1 ;'
+                ' st:isSectionHeader false ; st:matchStatus "exact" ; st:member :t01-r001 .')},
+        (ST.parentName, SH.MinCountConstraintComponent)),
     "match kind not in list": (
         {"match": (':match-t01-r001--t02-r001 a st:Match ; st:matchedRow :t01-r001 , :t02-r001 ; st:matchKind "near_match" ;'
                    ' st:reviewStatus "decided" ; st:decidedBy :decision-ccorr-001 .')},

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Extract Schedule of Activities (SoA) tables from clinical trial protocols into reviewed, consolidated, structured data."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["rdflib"]
 
 [project.optional-dependencies]
 notebooks = ["pandas", "requests", "pymupdf", "pymupdf4llm", "openpyxl"]
@@ -18,7 +18,7 @@ bands = ["numpy"]
 # Collection index: the study manifest (studies_protocols.xlsx) and the rendered extraction
 # logs. It fails loudly without these.
 index = ["openpyxl", "markdown"]
-test = ["pytest"]
+test = ["pytest", "pyshacl"]
 
 [project.scripts]
 soa-tables-row-audit = "soa_tables.row_audit:main"

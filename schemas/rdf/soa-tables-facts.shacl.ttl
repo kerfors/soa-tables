@@ -94,7 +94,7 @@ st:lastPage          a rdf:Property ; rdfs:label "last page" .
 st:rowPosition       a rdf:Property ; rdfs:label "row position" ; rdfs:comment "Printed row_position." .
 st:columnPosition    a rdf:Property ; rdfs:label "column position" ; rdfs:comment "Printed column_position." .
 st:inTable           a rdf:Property ; rdfs:label "in table" .
-st:onPage            a rdf:Property ; rdfs:label "on page" ; rdfs:comment "The page the row was read from (extraction source_page; the .verified.json where present). Tiled tables: the page the row was first read from." .
+st:onPage            a rdf:Property ; rdfs:label "on page" ; rdfs:comment "The page an activity row was read from (extraction source_page; the .verified.json where present). Tiled tables: the page the row was first read from. Property rows have none: the extraction gives no page for a header band; the table's firstPage and lastPage bound it." .
 st:hierarchyPosition a rdf:Property ; rdfs:label "hierarchy position" ; rdfs:comment "Position of a property row in its table's property hierarchy, from 1." .
 st:marker            a rdf:Property ; rdfs:label "marker" ; rdfs:comment "The printed marker, as printed." .
 st:row               a rdf:Property ; rdfs:label "row" .
@@ -114,12 +114,12 @@ st:matchDecision     a rdf:Property ; rdfs:label "match decision" ; rdfs:comment
 # unified activities, properties, columns
 st:name              a rdf:Property ; rdfs:label "name" ; rdfs:comment "On a source activity row: the activity name as printed (resolved table). On a unified activity: consolidation's name." .
 st:parent            a rdf:Property ; rdfs:label "parent" .
+st:parentName        a rdf:Property ; rdfs:label "parent name" ; rdfs:comment "parent_name as consolidation wrote it: the parent's name, names joined with ' / ' after a cross-parent match, a name with no unified activity of its own, or empty for none. Not derivable from st:parent." .
 st:hierarchyLevel    a rdf:Property ; rdfs:label "hierarchy level" .
 st:displayOrder      a rdf:Property ; rdfs:label "display order" .
 st:qualifiedKey      a rdf:Property ; rdfs:label "qualified key" .
 st:isSectionHeader   a rdf:Property ; rdfs:label "is section header" .
 st:isRedacted        a rdf:Property ; rdfs:label "is redacted" .
-st:nameVariation     a rdf:Property ; rdfs:label "name variation" .
 st:member            a rdf:Property ; rdfs:label "member" ; rdfs:comment "A source element the cross-table item was made from." .
 st:compositeLabel    a rdf:Property ; rdfs:label "composite label" .
 st:segment           a rdf:Property ; rdfs:label "segment" .
@@ -206,7 +206,8 @@ st:SourceTableShape a sh:NodeShape ;
         [ sh:path st:firstPage ; sh:class st:Page ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
         [ sh:path st:lastPage ; sh:class st:Page ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] .
 
-# rowPosition, inTable, onPage: the same in both row shapes (checked by a test)
+# rowPosition, inTable, onPage: the same in both row shapes, except that onPage is optional on property rows
+# (checked by a test)
 st:SourceActivityRowShape a sh:NodeShape ;
     sh:targetClass st:SourceActivityRow ;
     sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
@@ -226,7 +227,7 @@ st:SourcePropertyRowShape a sh:NodeShape ;
     sh:property
         [ sh:path st:rowPosition ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 1 ] ,
         [ sh:path st:inTable ; sh:class st:SourceTable ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
-        [ sh:path st:onPage ; sh:class st:Page ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ] ,
+        [ sh:path st:onPage ; sh:class st:Page ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
         [ sh:path st:level ; sh:datatype xsd:integer ; sh:maxCount 1 ] ,
         [ sh:path st:propertyType ; sh:minCount 1 ; sh:maxCount 1 ;
           sh:in ( "epoch" "period" "cycle" "visit" "study_day" "week" "timepoint" "window" "modality" "condition" "visit_attribute" "other" ) ] ,
@@ -263,12 +264,12 @@ st:UnifiedActivityShape a sh:NodeShape ;
     sh:property
         [ sh:path st:name ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
         [ sh:path st:parent ; sh:class st:UnifiedActivity ; sh:nodeKind sh:IRI ; sh:maxCount 1 ] ,
+        [ sh:path st:parentName ; sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ] ,
         [ sh:path st:hierarchyLevel ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ] ,
         [ sh:path st:displayOrder ; sh:datatype xsd:integer ; sh:minCount 1 ; sh:maxCount 1 ] ,
         [ sh:path st:qualifiedKey ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
         [ sh:path st:isSectionHeader ; sh:datatype xsd:boolean ; sh:minCount 1 ; sh:maxCount 1 ] ,
         [ sh:path st:isRedacted ; sh:datatype xsd:boolean ; sh:maxCount 1 ] ,
-        [ sh:path st:nameVariation ; sh:datatype xsd:string ] ,
         [ sh:path st:matchStatus ; sh:minCount 1 ; sh:maxCount 1 ;
           sh:in ( "new" "exact" "fuzzy_auto" "fuzzy_cross_parent" "fuzzy_review" "decision" ) ] ,
         [ sh:path st:matchConfidence ; sh:datatype xsd:decimal ; sh:maxCount 1 ] ,
