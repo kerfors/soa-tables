@@ -4,8 +4,7 @@
 One infographic, read top to bottom:
   1. the constructs of an SoA table (the blocks of the extraction schema),
   2. what each construct becomes in the resolved and the consolidated schema,
-  3. how corrections work (the two sidecar schemas),
-  4. USDM Instantiation, as work in progress (notes only).
+  3. how corrections work (the two sidecar schemas).
 
 Block descriptions, versions and enum values are read from schemas/*.json. Every
 field path the page names is checked against its schema; a path that no longer
@@ -20,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS = ROOT / "schemas"
 OUT = ROOT / "docs"
-BLOB = "https://github.com/kerfors/soa2usdm/blob/main/schemas/"
+BLOB = "https://github.com/kerfors/soa-tables/blob/main/schemas/"
 
 FILES = {
     "extraction": "soa-table-extraction.schema.json",
@@ -28,7 +27,6 @@ FILES = {
     "resolved": "soa-table-resolved.schema.json",
     "ccorr": "soa-consolidation-corrections.schema.json",
     "consolidated": "soa-tables-consolidated.schema.json",
-    "manifest": "usdm-manifest.schema.json",
 }
 
 LAYERS = [
@@ -134,8 +132,6 @@ CHECKS = [
     ("consolidated", "timeline_segments{}[].property_values"),
     ("consolidated", "schedule_matrix[].consolidated_value"),
     ("consolidated", "unified_annotations[].cell_references"),
-    ("manifest", "epochAxis.property"), ("manifest", "epochAxis.map"),
-    ("manifest", "timingAxis.property"), ("manifest", "encounterAxis.property"),
 ]
 
 
@@ -275,7 +271,6 @@ def main():
         "__MATCH_ENTRY__": build_entry(schemas["ccorr"], MATCH_ENTRY, match_chips),
         "__CORR_SCHEMA__": schema_link("corrections", schemas),
         "__CCORR_SCHEMA__": schema_link("ccorr", schemas),
-        "__MANIFEST_SCHEMA__": schema_link("manifest", schemas),
     }
     html = (Path(__file__).parent / "explainer_schema_chain.template.html").read_text(encoding="utf-8")
     for key, value in parts.items():
