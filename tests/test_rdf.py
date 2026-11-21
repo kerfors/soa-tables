@@ -234,7 +234,7 @@ REGISTER = config.COLLECTIONS_ROOT.parent / "register.csv"
 REGISTER_COLUMNS = ["collection", "protocol_key", "study_iri", "sha256", "file_iri", "source_file", "source_url",
                     "excluded_reason"]
 TRIGS = sorted(config.COLLECTIONS_ROOT.glob("*/protocols/*/soa-tables/rdf/*_facts.trig"))
-TRIG_IDS = [f"{t.parents[3].name}/{t.parents[2].name}" for t in TRIGS]
+TRIG_IDS = [f"{t.parents[4].name}/{t.parents[2].name}" for t in TRIGS]
 
 
 @functools.lru_cache(maxsize=None)
@@ -297,7 +297,7 @@ def test_register_excluded_rows_have_no_transcription():
 def test_trig_built_for_every_transcription():
     if not TRIGS:
         pytest.skip("no TriG built")
-    built_for = {(t.parents[3].name, t.parents[2].name) for t in TRIGS}
+    built_for = {(t.parents[4].name, t.parents[2].name) for t in TRIGS}
     expected = {(c, p) for c, p, _ in CASES}
     assert built_for == expected
     assert {k for k, r in register_by_key().items() if not r["excluded_reason"]} == expected
@@ -332,7 +332,7 @@ def test_committed_trig_equals_a_fresh_build(trig):
 @pytest.mark.parametrize("trig", TRIGS, ids=TRIG_IDS)
 def test_committed_trig_file_is_the_registered_file_of_record(trig):
     g = R.transcription_graph(R.parse_trig(trig.read_text(encoding="utf-8")))
-    key = (trig.parents[3].name, trig.parents[2].name)
+    key = (trig.parents[4].name, trig.parents[2].name)
     assert str(g.value(g.identifier, ST.ofFile)) == register_by_key()[key]["file_iri"]
 
 
