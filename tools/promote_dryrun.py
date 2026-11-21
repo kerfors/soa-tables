@@ -63,7 +63,7 @@ def build():
             print(f"  {s}: not in collection {COLLECTION} — skipped")
     installed = retired = kept = added = removed = 0
     for study in studies:
-        ext = SCRATCH / COLLECTION / "protocols" / study / "SoA2USDM" / "extracted"
+        ext = SCRATCH / COLLECTION / "protocols" / study / "soa-tables" / "extracted"
         staged = sorted((STAGING / study).glob(f"{study}_Table_*_extraction.json"))
         if not staged:
             print(f"  {study}: nothing staged — left at baseline")

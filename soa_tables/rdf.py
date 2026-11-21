@@ -44,7 +44,7 @@ HEX40 = re.compile(r"[0-9a-f]{40}")
 # =============================================================================
 
 def load_inputs(soa: Path) -> dict:
-    """Everything one protocol's graph is built from. soa: the protocol's SoA2USDM folder."""
+    """Everything one protocol's graph is built from. soa: the protocol's soa-tables folder."""
     soa = Path(soa)
     pid = soa.parent.name
     pdf = soa.parent / f"{pid}.pdf"

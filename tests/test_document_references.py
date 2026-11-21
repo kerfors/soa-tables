@@ -58,7 +58,7 @@ def test_a_reviewer_note_has_none():
 
 
 def _resolved(protocol):
-    return sorted((PROTOCOLS / protocol / "SoA2USDM" / "resolved").glob("*_resolved.json"))
+    return sorted((PROTOCOLS / protocol / "soa-tables" / "resolved").glob("*_resolved.json"))
 
 
 def test_resolved_fixture_carries_the_references_and_validates():

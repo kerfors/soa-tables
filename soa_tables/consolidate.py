@@ -1708,7 +1708,7 @@ def consolidate_tables(protocol_id: str, resolved_files: List[Path],
         "protocol_id": protocol_id,
         "consolidation_metadata": {
             "consolidated_at": datetime.now(timezone.utc).isoformat(),
-            "consolidator": "soa2usdm.steps.consolidate v1.1",
+            "consolidator": "soa_tables.consolidate v1.2",
             "source_tables": [
                 {
                     "table_id": t['table_metadata']['table_id'],

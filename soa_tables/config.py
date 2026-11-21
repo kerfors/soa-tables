@@ -96,11 +96,11 @@ def get_protocol_path(protocol_id: str, collection: str) -> Path:
 
 
 def get_soa_tables_folder(protocol_id: str, collection: str) -> Path:
-    """Get the SoA2USDM folder for a protocol."""
+    """Get the soa-tables folder for a protocol."""
     protocol_path = get_protocol_path(protocol_id, collection)
-    soa_folder = protocol_path / "SoA2USDM"
+    soa_folder = protocol_path / "soa-tables"
     if not soa_folder.exists():
-        raise FileNotFoundError(f"SoA2USDM folder not found: {soa_folder}")
+        raise FileNotFoundError(f"soa-tables folder not found: {soa_folder}")
     return soa_folder
 
 

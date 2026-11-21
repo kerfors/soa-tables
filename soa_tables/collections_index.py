@@ -52,7 +52,7 @@ def generate_collections_index_html() -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SoA2USDM Collections</title>
+<title>soa-tables collections</title>
 <style>
   :root {{ --blue:#1F4788; --blue2:#2E75B6; --ink:#1f2933; --muted:#5f6b7a; --line:#d9dee5; --bg:#f5f7fa; }}
   * {{ box-sizing:border-box; }}
@@ -79,14 +79,15 @@ def generate_collections_index_html() -> str:
 </head>
 <body>
   <header>
-    <h1>SoA2USDM Collections</h1>
+    <h1>soa-tables collections</h1>
     <div class="sub">Machine-actionable Schedule of Activities (SoA) extractions from clinical trial protocols</div>
   </header>
   <main>
   <p>This repository holds SoA extraction, resolution, and consolidation outputs produced with the
-     <a href="https://github.com/kerfors/soa2usdm">soa2usdm</a> pipeline, organised as collections of studies.
+     <a href="https://github.com/kerfors/soa-tables">soa-tables</a> pipeline, organised as collections of studies.
      Full protocol PDFs are not stored here: each protocol links to its source, and only its SoA pages are
-     published (an excerpt PDF and the rendered page images).</p>
+     published (an excerpt PDF and the rendered page images). Each protocol also has its transcription facts as RDF
+     (TriG); see <a href="https://github.com/kerfors/soa-tables/blob/main/documents/rdf-interface.md">rdf-interface.md</a>.</p>
 
   <h2>Collections</h2>
 {cards_html}

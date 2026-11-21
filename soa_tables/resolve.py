@@ -841,7 +841,7 @@ def resolve_extraction(extraction: dict, input_filename: str) -> dict:
     
     resolution_metadata = {
         "resolved_at": datetime.now(timezone.utc).isoformat(),
-        "resolver": "soa2usdm.steps.resolve v1.0",
+        "resolver": "soa_tables.resolve v1.0",
         "source_extraction": {
             "schema_name": extraction.get("schema_name", "soa-table-extraction"),
             "schema_version": extraction.get("schema_version", "1.0"),

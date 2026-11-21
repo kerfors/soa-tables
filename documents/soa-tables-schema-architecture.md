@@ -205,7 +205,7 @@ Neither check trusts the model's read of the grid; both re-derive from the sourc
 ## File Structure
 
 ```
-{NCTID}/SoA2USDM/
+{NCTID}/soa-tables/
 ├── extracted/
 │   ├── *_Table_{NN}_extraction.json          # Raw model output — immutable
 │   ├── *_Table_{NN}_corrections.json         # Human corrections sidecar (where needed)

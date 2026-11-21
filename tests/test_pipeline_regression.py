@@ -62,7 +62,7 @@ def discover_cases():
             continue
         for d in sorted(p for p in Path(protocols_dir).iterdir()
                         if p.is_dir() and not p.name.startswith(".")):
-            soa = d / "SoA2USDM"
+            soa = d / "soa-tables"
             if (list((soa / "extracted").glob("*_extraction.json"))
                     and list((soa / "resolved").glob("*_resolved.json"))
                     and list((soa / "consolidated").glob("*_consolidated.json"))):
@@ -90,10 +90,10 @@ def pipeline_output(request, tmp_path):
     by it, so a banked fixture (a frozen snapshot) keeps its own expected values while the live
     collection is free to move."""
     collection, protocol = request.param
-    golden = Path(config.COLLECTIONS[collection]) / protocol / "SoA2USDM"
+    golden = Path(config.COLLECTIONS[collection]) / protocol / "soa-tables"
 
     coll = tmp_path / "protocols"
-    extracted = coll / protocol / "SoA2USDM" / "extracted"
+    extracted = coll / protocol / "soa-tables" / "extracted"
     extracted.mkdir(parents=True)
     for f in (golden / "extracted").glob("*_extraction.json"):
         shutil.copy(f, extracted / f.name)
@@ -102,7 +102,7 @@ def pipeline_output(request, tmp_path):
     # The consolidation corrections sidecar is an input of consolidate, like the
     # extraction sidecars are of resolve.
     for f in (golden / "consolidated").glob("*_consolidation_corrections.json"):
-        consolidated = coll / protocol / "SoA2USDM" / "consolidated"
+        consolidated = coll / protocol / "soa-tables" / "consolidated"
         consolidated.mkdir()
         shutil.copy(f, consolidated / f.name)
 
@@ -115,7 +115,7 @@ def pipeline_output(request, tmp_path):
         data[step_cls.step_name] = step_cls(errors, analytics).execute(data)
     assert not errors.has_errors(), [(e.step, e.message) for e in errors.all]
 
-    yield f"{collection}/{protocol}", coll / protocol / "SoA2USDM", golden
+    yield f"{collection}/{protocol}", coll / protocol / "soa-tables", golden
     config.COLLECTIONS.pop(key, None)
 
 
@@ -130,23 +130,12 @@ def test_resolved_matches_golden(pipeline_output):
             f"{protocol}: resolved mismatch in {gf.name}"
 
 
-# Cases whose golden lives in the frozen soa2usdm-collections and differs on purpose from what
-# soa-tables now produces. Expected to fail; strict: a case that matches again must be removed here.
-KNOWN_GOLDEN_DIVERGENCE = {
-    "usdm_data/NCT04677179": "redacted rows no longer match across tables (2026-11-20); the golden is "
-                             "frozen soa2usdm output, regenerated in soa-tables-collections (step 5)",
-}
-
-
 def test_consolidated_matches_golden(pipeline_output):
     protocol, produced, golden = pipeline_output
     gf = next((golden / "consolidated").glob("*_consolidated.json"))
     pf = produced / "consolidated" / gf.name
     assert pf.exists(), f"{protocol}: consolidate produced no output"
     matches = scrub(json.loads(pf.read_text())) == scrub(json.loads(gf.read_text()))
-    if protocol in KNOWN_GOLDEN_DIVERGENCE:
-        assert not matches, f"{protocol}: matches its golden again; remove it from KNOWN_GOLDEN_DIVERGENCE"
-        pytest.xfail(KNOWN_GOLDEN_DIVERGENCE[protocol])
     assert matches, f"{protocol}: consolidated mismatch"
 
 
@@ -259,7 +248,7 @@ def test_partial_binding_detector_fires_on_desynced_row():
     extraction: the annotation declares an extra row in marker_locations that
     no row's annotation_markers carries — the declared-only row will not bind."""
     path = (Path(__file__).parent / "fixtures" / "protocols" / "NCT04677179"
-            / "SoA2USDM" / "extracted" / "NCT04677179_Table_01_extraction.json")
+            / "soa-tables" / "extracted" / "NCT04677179_Table_01_extraction.json")
     data = json.loads(path.read_text())
     assert not find_partial_marker_bindings(data), "banked extraction must be consistent"
     annot = next(a for a in data["annotations"]
@@ -281,7 +270,7 @@ def test_method_provenance_summary_warnings_and_unresolved():
     geometry-less methods (proximity) warn; an 'unresolved' marker location is an
     allowed answer — counted, not warned, and never a lost binding."""
     path = (Path(__file__).parent / "fixtures" / "protocols" / "NCT04677179"
-            / "SoA2USDM" / "extracted" / "NCT04677179_Table_01_extraction.json")
+            / "soa-tables" / "extracted" / "NCT04677179_Table_01_extraction.json")
     data = json.loads(path.read_text())
 
     baseline = validate_extraction(data)
@@ -403,7 +392,7 @@ def test_legend_retype_preserves_already_definitional_types():
     source_note. Verified directly on the banked extraction by injecting the
     real NCT05324124 abbreviation list."""
     path = (Path(__file__).parent / "fixtures" / "protocols" / "NCT04677179"
-            / "SoA2USDM" / "extracted" / "NCT04677179_Table_01_extraction.json")
+            / "soa-tables" / "extracted" / "NCT04677179_Table_01_extraction.json")
     data = json.loads(path.read_text())
     abbrev = "Abbreviations: CRU = clinical research unit; ECG = electrocardiogram;"
     assert is_legend_annotation(abbrev), "the guard, not the pattern, must skip it"
@@ -517,7 +506,7 @@ def test_header_bound_detector_fires_on_header_binding():
     reconstructed on it explicitly: mark an activity that carries a bound
     annotation as a section header, and the detector must name the pair."""
     path = (Path(__file__).parent / "fixtures" / "protocols" / "NCT04677179"
-            / "SoA2USDM" / "consolidated" / "NCT04677179_consolidated.json")
+            / "soa-tables" / "consolidated" / "NCT04677179_consolidated.json")
     data = json.loads(path.read_text())
     assert not find_header_bound_annotations(data), \
         "banked consolidated output must be clean"
@@ -577,7 +566,7 @@ def test_domain_table_with_other_columns_stops_consolidation():
     """Negative control: a domain table whose header differs from every main_soa
     table in one value must stop consolidation, not add columns of its own."""
     from soa_tables.consolidate import ColumnConsolidator
-    golden = Path(config.COLLECTIONS["usdm_data"]) / "NCT03283098" / "SoA2USDM" / "resolved"
+    golden = Path(config.COLLECTIONS["usdm_data"]) / "NCT03283098" / "soa-tables" / "resolved"
     tables = {n: json.loads((golden / f"NCT03283098_Table_{n:02d}_resolved.json").read_text())
               for n in (1, 2)}
     col = next(c for c in tables[2]["schedule_columns"] if not c.get("is_label_column"))
@@ -620,7 +609,7 @@ def test_range_fields_are_numeric_column_positions():
     KNOWN_A1_IN_FIXTURES = 0
     seen = a1_in_fixtures = 0
     for collection, protocols_dir in config.COLLECTIONS.items():
-        for path in Path(protocols_dir).glob("*/SoA2USDM/extracted/*_extraction.json"):
+        for path in Path(protocols_dir).glob("*/soa-tables/extracted/*_extraction.json"):
             data = json.loads(path.read_text())
             for array, field in (("schedule_grid", "merged_cell_range"),
                                  ("activity_schedule", "source_range")):

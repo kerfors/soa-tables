@@ -23,7 +23,7 @@ def discover_cases():
         if not Path(protocols_dir).is_dir():
             continue
         for d in sorted(p for p in Path(protocols_dir).iterdir() if p.is_dir() and not p.name.startswith(".")):
-            soa = d / "SoA2USDM"
+            soa = d / "soa-tables"
             if (list((soa / "resolved").glob("*_resolved.json"))
                     and list((soa / "consolidated").glob("*_consolidated.json"))):
                 cases.append((collection, d.name, soa))

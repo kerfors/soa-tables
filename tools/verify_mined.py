@@ -41,7 +41,7 @@ def verify_study(study, protocols_dir):
     """Return a list of failure messages for one study entry."""
     if set(study) != STUDY_KEYS:
         return [f"keys differ: {sorted(set(study) ^ STUDY_KEYS)}"]
-    report = protocols_dir / study["study"] / "SoA2USDM" / "extracted" / study["report"]
+    report = protocols_dir / study["study"] / "soa-tables" / "extracted" / study["report"]
     text = norm(report.read_text(encoding="utf-8"))
     failures = []
     for kind, keys in KINDS.items():

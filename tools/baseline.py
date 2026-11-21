@@ -49,7 +49,7 @@ def table_number(path):
 
 
 def raw_extractions(protocols_dir):
-    return sorted(protocols_dir.glob("*/SoA2USDM/extracted/*_Table_*_extraction.json"))
+    return sorted(protocols_dir.glob("*/soa-tables/extracted/*_Table_*_extraction.json"))
 
 
 def per_table_metrics(files, schema):
@@ -75,7 +75,7 @@ def quote_verification(protocols_dir, studies):
     per_study, unverified = [], []
     with tempfile.TemporaryDirectory() as tmp:
         for study in studies:
-            (Path(tmp) / study).symlink_to(protocols_dir / study / "SoA2USDM" / "extracted")
+            (Path(tmp) / study).symlink_to(protocols_dir / study / "soa-tables" / "extracted")
         gate.STAGING, gate.BLIND = Path(tmp), protocols_dir
         for study in studies:
             out = gate.check_quotes(study)
@@ -97,7 +97,7 @@ def quote_verification(protocols_dir, studies):
 
 def corrections(protocols_dir):
     sidecars = []
-    for path in sorted(protocols_dir.glob("*/SoA2USDM/extracted/*_corrections.json")):
+    for path in sorted(protocols_dir.glob("*/soa-tables/extracted/*_corrections.json")):
         items = json.loads(path.read_text(encoding="utf-8"))["corrections"]
         sidecars.append({
             "file": path.name,

@@ -19,7 +19,7 @@ from soa_tables import config
 from soa_tables.review_page import (_across_tables, _column_map, _markers, build_review_model,
                                   render_review_html)
 
-FIXTURE = Path(__file__).parent / "fixtures" / "protocols" / "NCT04677179" / "SoA2USDM"
+FIXTURE = Path(__file__).parent / "fixtures" / "protocols" / "NCT04677179" / "soa-tables"
 SOA_PDF = config.find_soa_pdf("NCT04677179", "usdm_data") if "usdm_data" in config.COLLECTIONS else None
 SOA_PAGES = SOA_PDF.parent / "NCT04677179_soa_pages" if SOA_PDF else None
 needs_pdf = pytest.mark.skipif(

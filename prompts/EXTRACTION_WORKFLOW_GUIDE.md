@@ -46,7 +46,7 @@ The model runs start to finish and returns one extraction JSON per table plus an
 
 ## Pipeline: Layers 2–3 (Python)
 
-Once extraction JSON files are in `{NCTID}/SoA2USDM/extracted/`, run `01_batch.ipynb`. Set `COLLECTION` in the config cell and execute.
+Once extraction JSON files are in `{NCTID}/soa-tables/extracted/`, run `01_batch.ipynb`. Set `COLLECTION` in the config cell and execute.
 
 The batch notebook runs five steps in sequence:
 
@@ -122,7 +122,7 @@ After the pipeline, `soa-tables-row-audit --collection <name>` compares every ex
 ## File Structure Per Protocol
 
 ```
-{NCTID}/SoA2USDM/
+{NCTID}/soa-tables/
 ├── extracted/
 │   ├── {NCTID}_Table_{NN}_extraction.json            # raw, immutable
 │   ├── {NCTID}_Table_{NN}_corrections.json           # sidecar (where needed)
@@ -143,10 +143,10 @@ After the pipeline, `soa-tables-row-audit --collection <name>` compares every ex
 
 ## Publishing & commits
 
-Code and data are **two repos that commit separately** — `soa2usdm` (package, schemas, prompts, notebooks) and `soa2usdm-collections` (the derived outputs).
+Code and data are **two repos that commit separately** — `soa-tables` (package, schemas, prompts, notebooks) and `soa-tables-collections` (the derived outputs).
 
-In the **data repo**, `.gitignore` publishes only the sliced SoA PDFs (`{NCTID}_soa.pdf`) and everything under `SoA2USDM/**`. The full protocol PDF (`{NCTID}.pdf`) and the markdown dump (`{NCTID}.md`) stay local — never published.
+In the **data repo**, `.gitignore` publishes only the sliced SoA PDFs (`{NCTID}_soa.pdf`) and everything under `soa-tables/**`. The full protocol PDF (`{NCTID}.pdf`) and the markdown dump (`{NCTID}.md`) stay local — never published.
 
-Per protocol, stage `{NCTID}/SoA2USDM/`, `protocols/index.html`, and `studies_protocols.xlsx`, and **regenerate the index** (`IndexGeneratorStep`) before committing so the published page matches the outputs.
+Per protocol, stage `{NCTID}/soa-tables/`, `protocols/index.html`, and `studies_protocols.xlsx`, and **regenerate the index** (`IndexGeneratorStep`) before committing so the published page matches the outputs.
 
 Commit-message style: name the protocol and what changed, e.g. `NCT…: consolidation review, 4 matches decided`.

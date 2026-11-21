@@ -22,7 +22,7 @@ from soa_tables.corrections import apply_corrections, review_status
 from soa_tables.resolve import resolve_extraction
 from soa_tables.consolidate import consolidate_tables
 
-FIXTURE = Path(__file__).parent / "fixtures" / "protocols" / "NCT04677179" / "SoA2USDM" / "extracted"
+FIXTURE = Path(__file__).parent / "fixtures" / "protocols" / "NCT04677179" / "soa-tables" / "extracted"
 RAW_T1 = FIXTURE / "NCT04677179_Table_01_extraction.json"
 
 D2 = {

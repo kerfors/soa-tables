@@ -4,9 +4,9 @@
 
 **Start here:** [kerfors.github.io/soa-tables](https://kerfors.github.io/soa-tables/) — the schemas on one page.
 
-This repository is the **product**: the Python package, JSON schemas, prompts, notebooks, and design documents. Protocol collections — the derived extraction outputs and their visualizations — live in a **separate data repository**, [`soa2usdm-collections`](https://github.com/kerfors/soa2usdm-collections), so that code and data version independently and a public code repo stays free of protocol PDFs.
+This repository is the **product**: the Python package, JSON schemas, prompts, notebooks, and design documents. Protocol collections — the derived extraction outputs and their visualizations — live in a **separate data repository**, [`soa-tables-collections`](https://github.com/kerfors/soa-tables-collections), so that code and data version independently and a public code repo stays free of protocol PDFs.
 
-**Scope: transcript, not interpretation.** soa-tables stops at the consolidated SoA: what the tables print, reviewed against the pages. What the SoA *means* — a USDM document, CDISC terms for its activities — is left to consumers of the consolidated output. soa-tables was split out of [soa2usdm](https://github.com/kerfors/soa2usdm) (at commit `dc343b5`, 2026-11-09), which now holds the USDM Instantiation side. The data repository and the per-protocol output folder (`SoA2USDM/`) keep their names for now.
+**Scope: transcript, not interpretation.** soa-tables stops at the consolidated SoA: what the tables print, reviewed against the pages. What the SoA *means* — a USDM document, CDISC terms for its activities — is left to consumers of the consolidated output. soa-tables was split out of [soa2usdm](https://github.com/kerfors/soa2usdm) (at commit `dc343b5`, 2026-11-09), which now holds the USDM Instantiation side. The collections were regenerated into soa-tables-collections; [soa2usdm-collections](https://github.com/kerfors/soa2usdm-collections) is frozen at `cdecda08`.
 
 The approach originated in the PHUSE EU Connect 2025 paper [*From Schedules of Activities (SoA) to USDM: Automating Protocol Extraction Using Large Language Models*](https://phuse.s3.eu-central-1.amazonaws.com/Archive/2025/Connect/EU/Hamburg/PAP_ML08.pdf) (Forsberg & Ulander). The workflow has evolved substantially since — see [A Two-Year Journey](#a-two-year-journey) below.
 
@@ -33,7 +33,8 @@ The consolidated SoA has two interfaces: HTML pages for people, and RDF for prog
 | Repo | Contents |
 |------|----------|
 | **soa-tables** (this repo) | Package, schemas, prompts, notebooks, documents, regression fixtures |
-| [**soa2usdm-collections**](https://github.com/kerfors/soa2usdm-collections) | Protocol collections: derived extraction/resolution/consolidation outputs and HTML visualizations (GitHub Pages). No protocol PDFs. |
+| [**soa-tables-collections**](https://github.com/kerfors/soa-tables-collections) | Protocol collections: SoA pages and extraction inputs, derived resolution/consolidation outputs, HTML visualizations and RDF (TriG) per protocol (GitHub Pages). No full protocol PDFs. |
+| [**soa2usdm-collections**](https://github.com/kerfors/soa2usdm-collections) | Frozen at `cdecda08`: its Layer 1–3 outputs are superseded by soa-tables-collections; keeps the Towards CDISC outputs |
 | [**soa2usdm**](https://github.com/kerfors/soa2usdm) | Consumer: USDM Instantiation from a consolidated SoA; also, for now, the early Towards CDISC work |
 
 The two repos are designed to sit side by side:
@@ -41,12 +42,12 @@ The two repos are designed to sit side by side:
 ```
 parent/
 ├── soa-tables/               # this repo
-└── soa2usdm-collections/     # data repo
+└── soa-tables-collections/   # data repo
 ```
 
 The package discovers collections at `../soa-tables-collections/collections/` by default. Override with the `SOA_TABLES_COLLECTIONS` environment variable to point anywhere.
 
-Cloning **soa-tables** alone is fully functional: the regression suite runs against fixtures shipped in `tests/fixtures/`, so tests pass with no collections checkout present. To build your own collection, clone `soa2usdm-collections` (or start an empty one with the same layout) and work through protocols with the notebooks.
+Cloning **soa-tables** alone is fully functional: the regression suite runs against fixtures shipped in `tests/fixtures/`, so tests pass with no collections checkout present. To build your own collection, clone `soa-tables-collections` (or start an empty one with the same layout) and work through protocols with the notebooks.
 
 ## Structure
 

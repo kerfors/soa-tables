@@ -93,7 +93,7 @@ def test_a_page_shows_the_reason_in_place_of_the_empty_text():
 # a reviewer note starts with; typed placeholders carry none of it in annotation_text.
 UNTYPED = re.compile(r"^(?:Definition |Footnote )?not printed in the (?:extracted )?source|^Reviewer note"
                      r"|Probable equivalent|not source content", re.I)
-CONSOLIDATED = sorted(config.COLLECTIONS_ROOT.glob("*/protocols/*/SoA2USDM/consolidated/*_consolidated.json"))
+CONSOLIDATED = sorted(config.COLLECTIONS_ROOT.glob("*/protocols/*/soa-tables/consolidated/*_consolidated.json"))
 
 
 @pytest.mark.skipif(not CONSOLIDATED, reason="needs the collections")

@@ -127,6 +127,7 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
         'consolidated_file': None,
         'report_file': None,
         'review_file': None,
+        'rdf_file': None,
         'redacted': 0,
         'activities': 0,
     }
@@ -146,7 +147,7 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
             'css_class': 'link-soa',
         })
     
-    # SoA2USDM folder
+    # soa-tables folder
     try:
         soa_folder = config.get_soa_tables_folder(protocol_id, collection)
     except FileNotFoundError:
@@ -172,7 +173,7 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
             })
         review = extracted_dir / f"{protocol_id}_review.html"
         if review.exists():
-            result['review_file'] = f"{protocol_id}/SoA2USDM/extracted/{review.name}"
+            result['review_file'] = f"{protocol_id}/soa-tables/extracted/{review.name}"
         # Open judgement calls: derived from review_items + sidecar references.
         status = review_status(extracted_dir)
         result['review_items_total'] = status['total']
@@ -190,7 +191,7 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
                                       collection, title="Extraction log", current="log")
                 result['report_file'] = str(report_html.relative_to(collection_path))
             else:
-                result['report_file'] = f"{protocol_id}/SoA2USDM/extracted/{report.name}"
+                result['report_file'] = f"{protocol_id}/soa-tables/extracted/{report.name}"
             break
         # Further reports of the same protocol, e.g. '<pid>_flowcharts_uncertainty_report.md' for
         # tables added to an accepted study (item 20b).
@@ -224,13 +225,18 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
                     'track_label': tmeta.get('track_label', ''),
                 })
     
+    # Transcription facts as RDF (TriG), when built
+    rdf_file = soa_folder / "rdf" / f"{protocol_id}_facts.trig"
+    if rdf_file.exists():
+        result['rdf_file'] = f"{protocol_id}/soa-tables/rdf/{rdf_file.name}"
+
     # Consolidated HTML
     cons_dir = soa_folder / "consolidated"
     if cons_dir.exists():
         cons_file = cons_dir / f"{protocol_id}_consolidated.html"
         if cons_file.exists():
             result['has_consolidated'] = True
-            result['consolidated_file'] = f"{protocol_id}/SoA2USDM/consolidated/{cons_file.name}"
+            result['consolidated_file'] = f"{protocol_id}/soa-tables/consolidated/{cons_file.name}"
             
             # JSON companion viewer
             cons_json = cons_dir / f"{protocol_id}_consolidated.json"
@@ -276,7 +282,7 @@ def _render_markdown_html(md_path: Path, html_path: Path, protocol_id: str, coll
     """Render a per-protocol markdown report as styled HTML, unless the page is
     current (newer than its source and carrying today's nav block)."""
     # Depth below the collection index — reports can sit at the protocol
-    # root, in SoA2USDM/, or in a layer subfolder.
+    # root, in soa-tables/, or in a layer subfolder.
     rel_to_collection = html_path.relative_to(collection_path)
     depth = len(rel_to_collection.parts) - 1
     nav_html = nav_block(collection, protocol_id, title, depth=depth,
@@ -674,6 +680,8 @@ def generate_index_html(collection: str) -> str:
             cons_html = f'<a href="{p["consolidated_file"]}" class="link-table" title="Protocol-level SoA — all tables unified">View</a>'
             if p.get('consolidated_json'):
                 cons_html += f' <a href="{p["consolidated_json"]}" class="link-json" title="Consolidated JSON data">json</a>'
+            if p.get('rdf_file'):
+                cons_html += f' <a href="{p["rdf_file"]}" class="link-rdf" title="Transcription facts as RDF (TriG)">RDF</a>'
             # Consolidation decisions, kept apart from the extraction decisions
             # in the Review column: matches across tables and how many are open.
             if p.get('matches_total'):
@@ -794,7 +802,7 @@ def generate_index_html(collection: str) -> str:
         .sources a:hover, .viz a:hover { text-decoration: underline; }
         .ttype { color: var(--muted); font-size: 11px; }
         .tables a { display: block; }  /* one table per line, so Extraction and Resolution line up */
-        .link-json { color: var(--muted) !important; font-size: 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+        .link-json, .link-rdf { color: var(--muted) !important; font-size: 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
         .link-review { font-weight: 600; }
         .decisions { font-size: 11px; color: var(--ok); white-space: nowrap; }
         .decisions.open { color: var(--warn); font-weight: 600; }
@@ -812,14 +820,14 @@ def generate_index_html(collection: str) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{esc(collection)} · collection index · SoA2USDM</title>
+    <title>{esc(collection)} · collection index · soa-tables</title>
     <style>{css}</style>
 </head>
 <body>
     <div class="header">
         <div>
             <h1>{esc(collection)}</h1>
-            <div class="sub">SoA2USDM — Schedule of Activities Extraction Pipeline · {len(protocols)} protocols · {len(ready)} processed · {len(pending)} pending{excl_meta} · generated {generated_at}</div>
+            <div class="sub">soa-tables — Schedule of Activities transcription · {len(protocols)} protocols · {len(ready)} processed · {len(pending)} pending{excl_meta} · generated {generated_at}</div>
         </div>
     </div>
     <div class="crumbs"><a href="../../../index.html">Collections</a><span class="sep">›</span><span class="cur">{esc(collection)}</span></div>

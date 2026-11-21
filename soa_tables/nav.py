@@ -18,7 +18,7 @@ Directory layout the relative paths rely on (see config):
 
     <root>/index.html
     <root>/collections/{collection}/protocols/index.html
-    <root>/collections/{collection}/protocols/{pid}/SoA2USDM/{extracted,resolved,consolidated}/...
+    <root>/collections/{collection}/protocols/{pid}/soa-tables/{extracted,resolved,consolidated}/...
 
 `depth` is the number of directories the page sits below the collection
 index (protocols/). Pages in extracted/, resolved/ and consolidated/ have
@@ -77,20 +77,20 @@ def discover_siblings(protocol_id: str, collection: str) -> dict:
     for the protocol's own report), emitted when the report exists as .md or
     already-rendered .html (the .html is rendered with the index, same batch).
     """
-    soa = config.get_protocol_path(protocol_id, collection) / "SoA2USDM"
+    soa = config.get_protocol_path(protocol_id, collection) / "soa-tables"
     ext_dir, res_dir, cons_dir = soa / "extracted", soa / "resolved", soa / "consolidated"
 
     extraction = []
     for f in sorted(ext_dir.glob("*_extraction.json")) if ext_dir.is_dir() else []:
         n = _table_num(f.name)
         if n is not None:
-            extraction.append((n, f"SoA2USDM/extracted/{f.stem}_viewer.html"))
+            extraction.append((n, f"soa-tables/extracted/{f.stem}_viewer.html"))
 
     resolved = []
     for f in sorted(res_dir.glob("*_resolved.json")) if res_dir.is_dir() else []:
         n = _table_num(f.name)
         if n is not None:
-            resolved.append((n, f"SoA2USDM/resolved/{f.stem}_viewer.html"))
+            resolved.append((n, f"soa-tables/resolved/{f.stem}_viewer.html"))
 
     cons = cons_dir / f"{protocol_id}_consolidated.html"
     review = ext_dir / f"{protocol_id}_review.html"
@@ -102,13 +102,13 @@ def discover_siblings(protocol_id: str, collection: str) -> dict:
                  for f in ext_dir.glob(f"{protocol_id}*{sfx}")}
         for stem in sorted(stems, key=lambda s: (s != protocol_id, s)):
             infix = stem[len(protocol_id) + 1:] or None
-            logs.append((infix, f"SoA2USDM/extracted/{stem}_uncertainty_report.html"))
+            logs.append((infix, f"soa-tables/extracted/{stem}_uncertainty_report.html"))
 
     return {
         "extraction": extraction,
         "resolved": resolved,
-        "consolidated": f"SoA2USDM/consolidated/{cons.name}" if cons.exists() else None,
-        "review": f"SoA2USDM/extracted/{review.name}" if review.exists() else None,
+        "consolidated": f"soa-tables/consolidated/{cons.name}" if cons.exists() else None,
+        "review": f"soa-tables/extracted/{review.name}" if review.exists() else None,
         "logs": logs,
     }
 

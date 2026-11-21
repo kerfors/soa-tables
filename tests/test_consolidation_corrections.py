@@ -21,7 +21,7 @@ from soa_tables.consolidate import consolidate_tables
 from soa_tables.visualize import build_matches_model, generate_consolidated_html, mark_differences
 
 SCHEMAS = Path(__file__).parent.parent / "schemas"
-FIXTURE = Path(__file__).parent / "fixtures" / "protocols" / "NCT03637764" / "SoA2USDM" / "resolved"
+FIXTURE = Path(__file__).parent / "fixtures" / "protocols" / "NCT03637764" / "soa-tables" / "resolved"
 FIXTURE_FILES = sorted(FIXTURE.glob("*_resolved.json"))
 
 
