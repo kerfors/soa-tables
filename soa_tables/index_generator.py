@@ -267,27 +267,6 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
                 except Exception:
                     pass
     
-    # USDM readiness/evaluation markdown
-    # Search protocol root, SoA2USDM folder, and consolidated/ subfolder.
-    # Match: {NCTID}_USDM_readiness*.md, {NCTID}_USDM_readiness_report*.md,
-    #        {NCTID}_USDM_evaluation*.md (with optional version suffix before .md)
-    for eval_dir in [protocol_path, soa_folder, soa_folder / "consolidated"]:
-        if not eval_dir.exists():
-            continue
-        eval_files = sorted([
-            f for f in eval_dir.glob(f"{protocol_id}_USDM_*.md")
-            if '_readiness' in f.name.lower() or '_evaluation' in f.name.lower()
-        ])
-        if eval_files:
-            md_file = eval_files[-1]  # latest version
-            html_file = md_file.with_suffix('.html')
-            # Generate HTML wrapper if missing or stale (the check is inside)
-            _render_markdown_html(md_file, html_file, protocol_id, collection_path, collection)
-            rel = html_file.relative_to(collection_path)
-            result['usdm_evaluation'] = str(rel)
-            result['usdm_evaluation_label'] = md_file.stem  # filename without extension
-            break
-    
     return result
 
 
@@ -726,12 +705,6 @@ def generate_index_html(collection: str) -> str:
         for infix, path in p.get('extra_reports', []):
             report_html += f' <a href="{path}" class="link-report" title="Extraction log of a later session on this protocol ({esc(infix)})">extraction log ({esc(infix)})</a>'
 
-        # USDM readiness column
-        usdm_html = ''
-        if p.get('usdm_evaluation'):
-            usdm_label = esc(p.get('usdm_evaluation_label', 'View'))
-            usdm_html = f'<a href="{p["usdm_evaluation"]}" class="link-usdm" title="USDM Readiness Evaluation">{usdm_label}</a>'
-        
         # Study info
         soa = esc(str(p['soa_pages'])) if p['soa_pages'] else ''
         study_code = esc(str(p['study_code'])) if p['study_code'] else ''
