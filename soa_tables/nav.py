@@ -73,7 +73,9 @@ def discover_siblings(protocol_id: str, collection: str) -> dict:
     resolved: [(n, href)] JSON viewers of the per-table resolved data (from the
     *_resolved.json files, rendered with the index like the extraction viewers).
     consolidated / review:
-    href or None. logs: [(infix, href)] one per uncertainty report (infix None
+    href or None; consolidated from the *_consolidated.json (the page is rendered
+    from it by VisualizeStep), review from the page itself.
+    logs: [(infix, href)] one per uncertainty report (infix None
     for the protocol's own report), emitted when the report exists as .md or
     already-rendered .html (the .html is rendered with the index, same batch).
     """
@@ -93,6 +95,7 @@ def discover_siblings(protocol_id: str, collection: str) -> dict:
             resolved.append((n, f"soa-tables/resolved/{f.stem}_viewer.html"))
 
     cons = cons_dir / f"{protocol_id}_consolidated.html"
+    cons_json = cons_dir / f"{protocol_id}_consolidated.json"
     review = ext_dir / f"{protocol_id}_review.html"
     # Every uncertainty report of the protocol, its own first: a study can carry more than one
     # (NCT03637764 since item 19: '<pid>_flowcharts_uncertainty_report'). Item 20b.
@@ -107,7 +110,7 @@ def discover_siblings(protocol_id: str, collection: str) -> dict:
     return {
         "extraction": extraction,
         "resolved": resolved,
-        "consolidated": f"soa-tables/consolidated/{cons.name}" if cons.exists() else None,
+        "consolidated": f"soa-tables/consolidated/{cons.name}" if cons_json.exists() else None,
         "review": f"soa-tables/extracted/{review.name}" if review.exists() else None,
         "logs": logs,
     }

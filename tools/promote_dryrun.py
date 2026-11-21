@@ -121,8 +121,8 @@ from soa_tables.collections_index import CollectionsIndexStep
 from soa_tables.errors import Errors
 from soa_tables.analytics import Analytics
 
-STEPS = [ApplyCorrectionsStep, ResolveStep, ConsolidateStep, VisualizeStep,
-         ReviewPageStep]
+STEPS = [ApplyCorrectionsStep, ResolveStep, ConsolidateStep, ReviewPageStep,
+         VisualizeStep]
 # The nav strip is discovered from disk when a page is rendered. build() cleared consolidated/, so
 # on the first pass the consolidated page finds no review sibling. Render it
 # again once every artefact exists, so its nav matches a rebuild over a populated tree.

@@ -55,8 +55,8 @@ The batch notebook runs five steps in sequence:
 | 1 | `ApplyCorrectionsStep` | 1.5 | Applies `*_corrections.json` sidecars → `*_extraction.verified.json`; raw never overwritten |
 | 2 | `ResolveStep` | 2 | Adds IDs, validates hierarchy, derives relationships — per table |
 | 3 | `ConsolidateStep` | 3 | Cross-table integration, activity matching, annotation dedup; reads `{NCTID}_consolidation_corrections.json` where one exists |
-| 4 | `VisualizeStep` | — | Consolidated HTML: the unified SoA, with its notes marked where they apply, and the *Matches across tables* section |
-| 5 | `ReviewPageStep` | — | `{NCTID}_review.html`: the extraction against its rendered source pages — rows, marks, notes, review items and cross-table folds drawn where they refer to; drafts sidecar entries, writes nothing |
+| 4 | `ReviewPageStep` | — | `{NCTID}_review.html`: the extraction against its rendered source pages — rows, marks, notes, review items and cross-table folds drawn where they refer to; drafts sidecar entries, writes nothing |
+| 5 | `VisualizeStep` | — | Consolidated HTML: the unified SoA, with its notes marked where they apply, and the *Matches across tables* section |
 
 After all protocols: `IndexGeneratorStep` builds the collection index and renders the reports (refreshing each page's navigation), `CollectionsIndexStep` the root index.
 
@@ -89,7 +89,7 @@ pid = 'NCT00000000'
 errors, analytics = Errors(), Analytics()
 data = {'source': {'protocol_id': pid, 'collection': COLLECTION}}
 for step_cls in (ApplyCorrectionsStep, ResolveStep,
-                 ConsolidateStep, VisualizeStep, ReviewPageStep):
+                 ConsolidateStep, ReviewPageStep, VisualizeStep):
     data[step_cls.step_name] = step_cls(errors, analytics).execute(data)
 
 # Rebuild the collection index and root index after any protocol change
