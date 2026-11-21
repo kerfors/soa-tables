@@ -148,7 +148,7 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
     
     # SoA2USDM folder
     try:
-        soa_folder = config.get_soa2usdm_folder(protocol_id, collection)
+        soa_folder = config.get_soa_tables_folder(protocol_id, collection)
     except FileNotFoundError:
         return result
     

@@ -44,7 +44,7 @@ parent/
 └── soa2usdm-collections/     # data repo
 ```
 
-The package discovers collections at `../soa2usdm-collections/collections/` by default. Override with the `SOA2USDM_COLLECTIONS` environment variable to point anywhere.
+The package discovers collections at `../soa-tables-collections/collections/` by default. Override with the `SOA_TABLES_COLLECTIONS` environment variable to point anywhere.
 
 Cloning **soa-tables** alone is fully functional: the regression suite runs against fixtures shipped in `tests/fixtures/`, so tests pass with no collections checkout present. To build your own collection, clone `soa2usdm-collections` (or start an empty one with the same layout) and work through protocols with the notebooks.
 

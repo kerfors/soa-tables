@@ -1,4 +1,4 @@
-# SoA2USDM Schema Architecture
+# soa-tables Schema Architecture
 
 ## From Table Presentation to Study Logic
 

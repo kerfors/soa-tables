@@ -19,9 +19,9 @@ guess where guessing would be silent.
 | `verify_mined.py` | checks `documents/re-extraction-baseline-mined.json`: key sets, and every `evidence_quote` verbatim in its uncertainty report |
 | `redaction/` | `apply_redactions.py` + `REDACTIONS.json`: the redacted prompt and taxonomy for the blind tree (step 2) |
 
-Paths come from the environment: `SOA2USDM_REPO`, `SOA2USDM_COLLECTIONS`, `SOA2USDM_COLLECTION`,
-`SOA2USDM_STAGING`, `SOA2USDM_BLIND`, `SOA2USDM_CALIB`, `SOA2USDM_SCRATCH`, `SOA2USDM_SIDECARS`,
-`SOA2USDM_BASELINE` (default `documents/re-extraction-baseline.json`; misc_studies has its own).
+Paths come from the environment: `SOA_TABLES_REPO`, `SOA_TABLES_COLLECTIONS`, `SOA_TABLES_COLLECTION`,
+`SOA_TABLES_STAGING`, `SOA_TABLES_BLIND`, `SOA_TABLES_CALIB`, `SOA_TABLES_SCRATCH`, `SOA_TABLES_SIDECARS`,
+`SOA_TABLES_BASELINE` (default `documents/re-extraction-baseline.json`; misc_studies has its own).
 
 ## The method, in the order it has to happen
 

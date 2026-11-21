@@ -15,9 +15,9 @@ is written; the commit that carries the file dates it. Interpretation of the unc
   collections         HEAD and the last commit that touched a raw extraction file.
 
 Environment (as for tools/gate.py):
-  SOA2USDM_REPO         this repo (default: the tools/ parent)
-  SOA2USDM_COLLECTIONS  the collections tree (config.py reads this)
-  SOA2USDM_COLLECTION   which collection (default usdm_data)
+  SOA_TABLES_REPO         this repo (default: the tools/ parent)
+  SOA_TABLES_COLLECTIONS  the collections tree (config.py reads this)
+  SOA_TABLES_COLLECTION   which collection (default usdm_data)
 
 Usage:  python tools/baseline.py [--out PATH]
 """
@@ -32,8 +32,8 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
-REPO = Path(os.environ.get("SOA2USDM_REPO", Path(__file__).resolve().parents[1]))
-COLLECTION = os.environ.get("SOA2USDM_COLLECTION", "usdm_data")
+REPO = Path(os.environ.get("SOA_TABLES_REPO", Path(__file__).resolve().parents[1]))
+COLLECTION = os.environ.get("SOA_TABLES_COLLECTION", "usdm_data")
 sys.path.insert(0, str(REPO / "tools"))
 sys.path.insert(0, str(REPO))
 

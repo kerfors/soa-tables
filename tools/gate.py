@@ -25,16 +25,16 @@ import jsonschema
 
 # Paths come from the environment so the harness is not tied to one machine. Defaults are derived
 # from this file's location inside the repo.
-#   SOA2USDM_COLLECTIONS  the collections tree being read/rebuilt   (config.py reads this too)
-#   SOA2USDM_STAGING      where extraction agents write             (never the corpus)
-#   SOA2USDM_BLIND        blind/<STUDY>/ — the PDF and PAGEMAP.md the agents see
-#   SOA2USDM_CALIB        a copy of the ACCEPTED corpus, for calibrating checks
-#   SOA2USDM_SCRATCH      throwaway collection for rehearsals
-#   SOA2USDM_BASELINE     per-table baseline JSON (default documents/re-extraction-baseline.json)
-REPO = Path(os.environ.get("SOA2USDM_REPO", Path(__file__).resolve().parents[1]))
-STAGING = Path(os.environ.get("SOA2USDM_STAGING", "staging"))
-BLIND = Path(os.environ.get("SOA2USDM_BLIND", "blind"))
-BASELINE = Path(os.environ.get("SOA2USDM_BASELINE", REPO / "documents" / "re-extraction-baseline.json"))
+#   SOA_TABLES_COLLECTIONS  the collections tree being read/rebuilt   (config.py reads this too)
+#   SOA_TABLES_STAGING      where extraction agents write             (never the corpus)
+#   SOA_TABLES_BLIND        blind/<STUDY>/ — the PDF and PAGEMAP.md the agents see
+#   SOA_TABLES_CALIB        a copy of the ACCEPTED corpus, for calibrating checks
+#   SOA_TABLES_SCRATCH      throwaway collection for rehearsals
+#   SOA_TABLES_BASELINE     per-table baseline JSON (default documents/re-extraction-baseline.json)
+REPO = Path(os.environ.get("SOA_TABLES_REPO", Path(__file__).resolve().parents[1]))
+STAGING = Path(os.environ.get("SOA_TABLES_STAGING", "staging"))
+BLIND = Path(os.environ.get("SOA_TABLES_BLIND", "blind"))
+BASELINE = Path(os.environ.get("SOA_TABLES_BASELINE", REPO / "documents" / "re-extraction-baseline.json"))
 SCHEMA = REPO / "schemas" / "soa-table-extraction.schema.json"
 PROMPT = REPO / "prompts" / "PDF_TO_JSON_PROMPT.md"
 TAXONOMY = REPO / "documents" / "soa_table_type_definitions.md"
@@ -481,7 +481,7 @@ def main():
     # Check 12's binding baseline is re-derived from CALIB when present, overriding the baseline
     # JSON's `bind`. Use the published .verified.json copies renamed *_extraction.json: sidecars do
     # not change the raw files (inventory item 25m). Absent CALIB, the baseline JSON's `bind` is used.
-    calib = Path(os.environ.get("SOA2USDM_CALIB", "calib"))
+    calib = Path(os.environ.get("SOA_TABLES_CALIB", "calib"))
     if calib.is_dir():
         n_derived = 0
         for p in sorted(calib.glob("*/*_Table_*_extraction.json")):

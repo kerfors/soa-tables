@@ -1,5 +1,5 @@
 """
-SoA2USDM library — core processing logic.
+soa-tables library — core processing logic.
 
 Steps:
     apply_corrections   Layer 1.5 — apply human corrections to raw extraction (ApplyCorrectionsStep)

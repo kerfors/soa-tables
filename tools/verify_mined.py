@@ -8,8 +8,8 @@ The mined file is interpretation, not machine baseline — this script checks th
 sources faithfully, not that its claims are right.
 
 Environment (as for tools/gate.py):
-  SOA2USDM_REPO         this repo (default: the tools/ parent)
-  SOA2USDM_COLLECTIONS  the collections tree (config.py reads this)
+  SOA_TABLES_REPO         this repo (default: the tools/ parent)
+  SOA_TABLES_COLLECTIONS  the collections tree (config.py reads this)
 
 Usage:  python tools/verify_mined.py [--mined PATH]
 """
@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(os.environ.get("SOA2USDM_REPO", Path(__file__).resolve().parents[1]))
+REPO = Path(os.environ.get("SOA_TABLES_REPO", Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(REPO))
 
 from soa_tables import config  # noqa: E402

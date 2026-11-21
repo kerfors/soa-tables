@@ -25,7 +25,9 @@ from pathlib import Path
 FORBIDDEN = [
     (r"\.vault-", "the vault"),
     (r"soa2usdm-collections", "the collections repo"),
+    (r"soa-tables-collections", "the collections repo"),
     (r"(?i)/soa2usdm/(soa2usdm|documents|tests|tools)\b", "the code repo"),
+    (r"(?i)/soa-tables/(soa_tables|documents|tests|tools)\b", "the code repo"),
     (r"soa2usdm-sweep2", "the sweep-2 orchestration tree (worktree, calib, scratch, redaction log)"),
     (r"re-extraction-(baseline|acceptance)", "the checklist / machine baseline"),
     (r"extraction\.verified", "verified extraction output"),

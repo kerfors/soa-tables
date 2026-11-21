@@ -873,7 +873,7 @@ def main(argv=None):
     ap.add_argument("protocol_id")
     ap.add_argument("-o", "--output", required=True, type=Path)
     args = ap.parse_args(argv)
-    args.output.write_text(build_trig(config.get_soa2usdm_folder(args.protocol_id, args.collection)))
+    args.output.write_text(build_trig(config.get_soa_tables_folder(args.protocol_id, args.collection)))
 
 
 if __name__ == "__main__":

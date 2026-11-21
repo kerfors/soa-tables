@@ -19,16 +19,16 @@ from pathlib import Path
 
 # Paths come from the environment so the harness is not tied to one machine. Defaults are derived
 # from this file's location inside the repo.
-#   SOA2USDM_COLLECTIONS  the collections tree being read/rebuilt   (config.py reads this too)
-#   SOA2USDM_STAGING      where extraction agents write             (never the corpus)
-#   SOA2USDM_BLIND        blind/<STUDY>/ — the PDF and PAGEMAP.md the agents see
-#   SOA2USDM_CALIB        a copy of the ACCEPTED corpus, for calibrating checks
-#   SOA2USDM_SCRATCH      throwaway collection for rehearsals
-REPO = Path(os.environ.get("SOA2USDM_REPO", Path(__file__).resolve().parents[1]))
-REAL = Path(os.environ["SOA2USDM_COLLECTIONS"])
-SCRATCH = Path(os.environ.get("SOA2USDM_SCRATCH", "scratch")) / "collections"
-STAGING = Path(os.environ.get("SOA2USDM_STAGING", "staging"))
-COLLECTION = os.environ.get("SOA2USDM_COLLECTION", "usdm_data")
+#   SOA_TABLES_COLLECTIONS  the collections tree being read/rebuilt   (config.py reads this too)
+#   SOA_TABLES_STAGING      where extraction agents write             (never the corpus)
+#   SOA_TABLES_BLIND        blind/<STUDY>/ — the PDF and PAGEMAP.md the agents see
+#   SOA_TABLES_CALIB        a copy of the ACCEPTED corpus, for calibrating checks
+#   SOA_TABLES_SCRATCH      throwaway collection for rehearsals
+REPO = Path(os.environ.get("SOA_TABLES_REPO", Path(__file__).resolve().parents[1]))
+REAL = Path(os.environ["SOA_TABLES_COLLECTIONS"])
+SCRATCH = Path(os.environ.get("SOA_TABLES_SCRATCH", "scratch")) / "collections"
+STAGING = Path(os.environ.get("SOA_TABLES_STAGING", "staging"))
+COLLECTION = os.environ.get("SOA_TABLES_COLLECTION", "usdm_data")
 
 
 def build_scratch(studies):
@@ -81,7 +81,7 @@ def build_scratch(studies):
 
 
 def run_pipeline(studies):
-    env = dict(os.environ, SOA2USDM_COLLECTIONS=str(SCRATCH), PYTHONPATH=str(REPO))
+    env = dict(os.environ, SOA_TABLES_COLLECTIONS=str(SCRATCH), PYTHONPATH=str(REPO))
     driver = f"""
 import sys
 from soa_tables.corrections import ApplyCorrectionsStep
@@ -121,7 +121,7 @@ sys.exit(1 if fail else 0)
 
 
 def run_row_audit():
-    env = dict(os.environ, SOA2USDM_COLLECTIONS=str(SCRATCH), PYTHONPATH=str(REPO))
+    env = dict(os.environ, SOA_TABLES_COLLECTIONS=str(SCRATCH), PYTHONPATH=str(REPO))
     out = SCRATCH / "row_audit_scratch.json"
     r = subprocess.run([sys.executable, "-m", "soa_tables.row_audit", "--collection", COLLECTION,
                         "--json", str(out)],

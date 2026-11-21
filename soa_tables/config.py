@@ -1,5 +1,5 @@
 """
-SoA2USDM Configuration
+soa-tables configuration
 
 Paths, constants, and discovery functions.
 All paths relative to the repository root (parent of this package folder).
@@ -14,13 +14,13 @@ from pathlib import Path
 # =============================================================================
 
 PKG_DIR = Path(__file__).parent
-REPO_ROOT = PKG_DIR.parent  # soa2usdm/ package is at repo root
+REPO_ROOT = PKG_DIR.parent  # soa_tables/ package is at repo root
 
-# Protocol collections live in a separate repo (soa2usdm-collections).
-# Default: sibling checkout. Override with SOA2USDM_COLLECTIONS env var.
+# Protocol collections live in a separate repo (soa-tables-collections).
+# Default: sibling checkout. Override with SOA_TABLES_COLLECTIONS env var.
 COLLECTIONS_ROOT = Path(os.environ.get(
-    "SOA2USDM_COLLECTIONS",
-    REPO_ROOT.parent / "soa2usdm-collections" / "collections",
+    "SOA_TABLES_COLLECTIONS",
+    REPO_ROOT.parent / "soa-tables-collections" / "collections",
 ))
 
 # Regression fixtures ship with this repo — tests run on a fresh clone
@@ -95,7 +95,7 @@ def get_protocol_path(protocol_id: str, collection: str) -> Path:
     return protocol_path
 
 
-def get_soa2usdm_folder(protocol_id: str, collection: str) -> Path:
+def get_soa_tables_folder(protocol_id: str, collection: str) -> Path:
     """Get the SoA2USDM folder for a protocol."""
     protocol_path = get_protocol_path(protocol_id, collection)
     soa_folder = protocol_path / "SoA2USDM"
@@ -106,22 +106,22 @@ def get_soa2usdm_folder(protocol_id: str, collection: str) -> Path:
 
 def get_extracted_dir(protocol_id: str, collection: str) -> Path:
     """Get the extracted directory for a protocol."""
-    return get_soa2usdm_folder(protocol_id, collection) / "extracted"
+    return get_soa_tables_folder(protocol_id, collection) / "extracted"
 
 
 def get_resolved_dir(protocol_id: str, collection: str) -> Path:
     """Get the resolved directory for a protocol."""
-    return get_soa2usdm_folder(protocol_id, collection) / "resolved"
+    return get_soa_tables_folder(protocol_id, collection) / "resolved"
 
 
 def get_consolidated_dir(protocol_id: str, collection: str) -> Path:
     """Get the consolidated directory for a protocol."""
-    return get_soa2usdm_folder(protocol_id, collection) / "consolidated"
+    return get_soa_tables_folder(protocol_id, collection) / "consolidated"
 
 
 def get_visualized_dir(protocol_id: str, collection: str) -> Path:
     """Get the visualized directory for a protocol."""
-    return get_soa2usdm_folder(protocol_id, collection) / "visualized"
+    return get_soa_tables_folder(protocol_id, collection) / "visualized"
 
 
 def find_extraction_files(protocol_id: str, collection: str) -> list[Path]:

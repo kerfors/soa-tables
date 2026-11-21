@@ -136,7 +136,7 @@ def render_study_pages(pdf, study, pages, declared_last, out_dir):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--collection", default="usdm_data")
-    ap.add_argument("--blind", default=os.environ.get("SOA2USDM_BLIND", "blind"))
+    ap.add_argument("--blind", default=os.environ.get("SOA_TABLES_BLIND", "blind"))
     ap.add_argument("--write", action="store_true", help="write blind/<STUDY>/PAGEMAP.md")
     ap.add_argument("--render", action="store_true",
                     help=f"write <protocol>/<STUDY>_soa_pages/pNN.png at {RENDER_DPI} dpi + pages.json")

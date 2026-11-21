@@ -26,18 +26,18 @@ from pathlib import Path
 
 # Paths come from the environment so the harness is not tied to one machine. Defaults are derived
 # from this file's location inside the repo.
-#   SOA2USDM_COLLECTIONS  the collections tree being read/rebuilt   (config.py reads this too)
-#   SOA2USDM_STAGING      where extraction agents write             (never the corpus)
-#   SOA2USDM_BLIND        blind/<STUDY>/ — the PDF and PAGEMAP.md the agents see
-#   SOA2USDM_CALIB        a copy of the ACCEPTED corpus, for calibrating checks
-#   SOA2USDM_SCRATCH      throwaway collection for rehearsals
-#   SOA2USDM_SIDECARS     corrections sidecars authored at promotion review
-REPO = Path(os.environ.get("SOA2USDM_REPO", Path(__file__).resolve().parents[1]))
-REAL = Path(os.environ["SOA2USDM_COLLECTIONS"])
-SCRATCH = Path(os.environ.get("SOA2USDM_SCRATCH", "scratch")) / "collections"
-STAGING = Path(os.environ.get("SOA2USDM_STAGING", "staging"))
-SIDECARS = Path(os.environ.get("SOA2USDM_SIDECARS", "sidecars"))
-COLLECTION = os.environ.get("SOA2USDM_COLLECTION", "usdm_data")
+#   SOA_TABLES_COLLECTIONS  the collections tree being read/rebuilt   (config.py reads this too)
+#   SOA_TABLES_STAGING      where extraction agents write             (never the corpus)
+#   SOA_TABLES_BLIND        blind/<STUDY>/ — the PDF and PAGEMAP.md the agents see
+#   SOA_TABLES_CALIB        a copy of the ACCEPTED corpus, for calibrating checks
+#   SOA_TABLES_SCRATCH      throwaway collection for rehearsals
+#   SOA_TABLES_SIDECARS     corrections sidecars authored at promotion review
+REPO = Path(os.environ.get("SOA_TABLES_REPO", Path(__file__).resolve().parents[1]))
+REAL = Path(os.environ["SOA_TABLES_COLLECTIONS"])
+SCRATCH = Path(os.environ.get("SOA_TABLES_SCRATCH", "scratch")) / "collections"
+STAGING = Path(os.environ.get("SOA_TABLES_STAGING", "staging"))
+SIDECARS = Path(os.environ.get("SOA_TABLES_SIDECARS", "sidecars"))
+COLLECTION = os.environ.get("SOA_TABLES_COLLECTION", "usdm_data")
 
 # Sweep-specific: which sidecars the re-extraction reproduced natively, and which carry human
 # judgement that no extraction can regenerate. Re-derive these per sweep — do NOT inherit them.
@@ -108,7 +108,7 @@ def build():
 
 
 def run(studies):
-    env = dict(os.environ, SOA2USDM_COLLECTIONS=str(SCRATCH), PYTHONPATH=str(REPO))
+    env = dict(os.environ, SOA_TABLES_COLLECTIONS=str(SCRATCH), PYTHONPATH=str(REPO))
     driver = f"""
 import sys
 from soa_tables.corrections import ApplyCorrectionsStep
@@ -170,7 +170,7 @@ def main():
     print("\n-- full published chain --")
     ok = run(studies)
     print("\n-- row audit --")
-    env = dict(os.environ, SOA2USDM_COLLECTIONS=str(SCRATCH), PYTHONPATH=str(REPO))
+    env = dict(os.environ, SOA_TABLES_COLLECTIONS=str(SCRATCH), PYTHONPATH=str(REPO))
     r = subprocess.run([sys.executable, "-m", "soa_tables.row_audit", "--collection", COLLECTION], env=env,
                        capture_output=True, text=True)
     tail = [l for l in r.stdout.splitlines() if "protocols," in l]

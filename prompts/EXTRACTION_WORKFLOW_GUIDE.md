@@ -1,4 +1,4 @@
-# SoA2USDM — Extraction Workflow Guide
+# soa-tables — Extraction Workflow Guide
 
 **Version:** 2.9
 

@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-STAGING = Path(os.environ.get("SOA2USDM_STAGING", "staging"))
+STAGING = Path(os.environ.get("SOA_TABLES_STAGING", "staging"))
 MODEL_ID = re.compile(r"^claude-[a-z0-9-]+$")
 
 

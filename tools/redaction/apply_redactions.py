@@ -1,7 +1,7 @@
 """Apply REDACTIONS.json to the prompt and taxonomy and write the blind copies.
 
 Fails if any logged span does not occur exactly once in its source, or if any study identifier
-survives in the written instructions. Env: SOA2USDM_REPO, SOA2USDM_COLLECTIONS, SOA2USDM_BLIND.
+survives in the written instructions. Env: SOA_TABLES_REPO, SOA_TABLES_COLLECTIONS, SOA_TABLES_BLIND.
 """
 import json
 import os
@@ -13,9 +13,9 @@ from pathlib import Path
 import openpyxl
 
 HERE = Path(__file__).resolve().parent
-REPO = Path(os.environ["SOA2USDM_REPO"])
-COLLECTIONS = Path(os.environ["SOA2USDM_COLLECTIONS"])
-OUT = Path(os.environ["SOA2USDM_BLIND"]) / "_instructions"
+REPO = Path(os.environ["SOA_TABLES_REPO"])
+COLLECTIONS = Path(os.environ["SOA_TABLES_COLLECTIONS"])
+OUT = Path(os.environ["SOA_TABLES_BLIND"]) / "_instructions"
 
 # Names not derivable from the manifests: sponsors as spelled in prose, and the molecules.
 EXTRA_TERMS = ["Lilly", "Novo", "Roche", "Tesaro", "Sanofi", "BMS", "AstraZeneca", "Amgen", "Alexion",
