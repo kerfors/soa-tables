@@ -49,9 +49,17 @@ CASES = discover_cases()
 IDS = [f"{c}/{p}" for c, p, _ in CASES]
 
 
+def case_inputs(soa: Path) -> dict:
+    """load_inputs with the file of record when it is local, else with the sha256 register.csv records for it."""
+    pid = soa.parent.name
+    if (soa.parent / f"{pid}.pdf").is_file():
+        return R.load_inputs(soa)
+    return R.load_inputs(soa, sha256=register_by_key()[(soa.parents[2].name, pid)]["sha256"])
+
+
 @functools.lru_cache(maxsize=None)
 def built(soa: Path):
-    inp = R.load_inputs(soa)
+    inp = case_inputs(soa)
     ds = R.build_dataset(inp, *COMMITS)
     minted = I.mint_all(inp["resolved"], inp["consolidated"], inp["items"], inp["corrections_doc"])
     return inp, ds, R.to_trig(ds), minted
@@ -95,7 +103,7 @@ def test_p2_graph_conforms_to_the_shapes(case, shapes):
 @pytest.mark.parametrize("case", CASES, ids=IDS)
 def test_p3_two_builds_identical_and_every_iri_minted(case):
     inp, ds, trig, minted = built(case[2])
-    assert R.to_trig(R.build_dataset(R.load_inputs(case[2]), *COMMITS)) == trig
+    assert R.to_trig(R.build_dataset(case_inputs(case[2]), *COMMITS)) == trig
     g = R.transcription_graph(ds)
     prefix = str(g.identifier) + "/"
     elements = {str(s)[len(prefix):] for s in g.subjects() if str(s).startswith(prefix)}
@@ -314,7 +322,7 @@ def test_committed_trig_parses_conforms_and_round_trips(trig, shapes):
     g = R.transcription_graph(R.parse_trig(trig.read_text(encoding="utf-8")))
     conforms, _, text = pyshacl.validate(g, shacl_graph=shapes, inference="none")
     assert conforms, text[:2000]
-    inp = R.load_inputs(soa)
+    inp = case_inputs(soa)
     minted = I.mint_all(inp["resolved"], inp["consolidated"], inp["items"], inp["corrections_doc"])
     original = R.canonical(inp["consolidated"], inp["resolved"], minted)
     rebuilt = R.graph_to_json(R.parse_trig(trig.read_text(encoding="utf-8")))
@@ -326,7 +334,7 @@ def test_committed_trig_equals_a_fresh_build(trig):
     soa = trig.parents[1]
     text = trig.read_text(encoding="utf-8")
     pins = _pins(R.transcription_graph(R.parse_trig(text)))
-    assert R.to_trig(R.build_dataset(R.load_inputs(soa), *pins)) == text
+    assert R.to_trig(R.build_dataset(case_inputs(soa), *pins)) == text
 
 
 @pytest.mark.parametrize("trig", TRIGS, ids=TRIG_IDS)
@@ -340,7 +348,7 @@ def test_committed_trig_file_is_the_registered_file_of_record(trig):
 def test_committed_trig_pins_hold(trig):
     soa = trig.parents[1]
     collections_pin, code_pin = _pins(R.transcription_graph(R.parse_trig(trig.read_text(encoding="utf-8"))))
-    inputs = R.load_inputs(soa)["input_paths"]
+    inputs = case_inputs(soa)["input_paths"]
     top = Path(R._git(soa, "rev-parse", "--show-toplevel"))
     rel = [str(Path(p).resolve().relative_to(top.resolve())) for p in inputs]
     git = lambda repo, *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)

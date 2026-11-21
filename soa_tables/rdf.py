@@ -43,13 +43,19 @@ HEX40 = re.compile(r"[0-9a-f]{40}")
 # Inputs
 # =============================================================================
 
-def load_inputs(soa: Path) -> dict:
-    """Everything one protocol's graph is built from. soa: the protocol's soa-tables folder."""
+def load_inputs(soa: Path, sha256: str = None) -> dict:
+    """Everything one protocol's graph is built from. soa: the protocol's soa-tables folder.
+
+    sha256: the file of record's hash when the file is not local (a clone without the full PDFs; the tests take it
+    from register.csv). Without it the file of record must be present and is hashed here.
+    """
     soa = Path(soa)
     pid = soa.parent.name
     pdf = soa.parent / f"{pid}.pdf"
-    if not pdf.is_file():
-        raise FileNotFoundError(f"{pid}: file of record {pdf} not found")
+    if sha256 is None:
+        if not pdf.is_file():
+            raise FileNotFoundError(f"{pid}: file of record {pdf} not found")
+        sha256 = I.sha256_file(pdf)
     resolved_files = sorted((soa / "resolved").glob("*_resolved.json"))
     consolidated_file = soa / "consolidated" / f"{pid}_consolidated.json"
     extraction_files = []
@@ -65,7 +71,7 @@ def load_inputs(soa: Path) -> dict:
                  for r in resolved for a in r["activities"]}
     items = V.build_matches_model(consolidated, row_names, corrections_doc)["items"]
     inputs = resolved_files + [consolidated_file] + extraction_files + ([sidecar] if sidecar.exists() else [])
-    return {"protocol_id": pid, "pdf": pdf, "resolved": resolved, "consolidated": consolidated,
+    return {"protocol_id": pid, "pdf": pdf, "sha256": sha256, "resolved": resolved, "consolidated": consolidated,
             "extractions": extractions, "corrections_doc": corrections_doc, "items": items,
             "input_paths": inputs}
 
@@ -146,7 +152,7 @@ def build_dataset(inp: dict, collections_commit: str, code_commit: str) -> Datas
     tables, xm = minted["tables"], minted["consolidated"]
     pages = row_pages(resolved, inp["extractions"])
 
-    m = I.file_iri(I.sha256_file(inp["pdf"]))
+    m = I.file_iri(inp["sha256"])
     tiri = I.transcription_iri(m)
     ds = Dataset()
     for prefix, ns in (("st", ST), ("prov", PROV), ("xsd", XSD),
