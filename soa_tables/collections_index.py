@@ -118,7 +118,7 @@ def generate_collections_index_html() -> str:
 
   <footer>
     Generated {generated_at} by <code>soa_tables.collections_index</code>.
-    Built iteratively with Claude (Anthropic). Content under CC-BY-4.0.
+    Built iteratively with Claude (Anthropic). Derived content under CC-BY-4.0; code under MIT.
   </footer>
 </body>
 </html>'''
