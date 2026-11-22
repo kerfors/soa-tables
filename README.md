@@ -73,6 +73,7 @@ soa-tables/
 │   ├── re-extraction-baseline*.json          # Machine baseline and mined claims (tools/)
 │   ├── identity.md                           # How elements are named: IRIs from the file of record
 │   ├── rdf-interface.md                      # The consolidated facts as TriG: content, build, checks
+│   ├── backlog.md                            # Open work, numbered B1 onward
 │   └── *.md                                  # Design notes (annotation model, identifiers)
 │
 ├── docs/                             # Published on GitHub Pages: kerfors.github.io/soa-tables
