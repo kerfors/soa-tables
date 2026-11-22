@@ -274,6 +274,27 @@ def build_schedule_columns(
 # Annotation Cross-Referencing
 # =============================================================================
 
+def at_marker_locations(referenced: dict, locations: list[dict],
+                        prop_by_row: dict, act_by_row: dict) -> dict:
+    """Keep only the referenced elements that the note's marker_locations name."""
+    props = {prop_by_row.get(loc["row_position"]) for loc in locations
+             if loc["location_type"] == "schedule_property"}
+    # A marker in a header cell names that column, however its location is typed.
+    cols = {make_column_id(loc["column_position"]) for loc in locations
+            if loc["row_position"] in prop_by_row and "column_position" in loc}
+    acts = {act_by_row.get(loc["row_position"]) for loc in locations
+            if loc["location_type"] == "activity_name"}
+    cells = {(act_by_row.get(loc["row_position"]), make_column_id(loc["column_position"]))
+             for loc in locations if loc["location_type"] == "schedule_cell"}
+    return {
+        "property_ids": [p for p in referenced["property_ids"] if p in props],
+        "column_ids": [c for c in referenced["column_ids"] if c in cols],
+        "activity_ids": [a for a in referenced["activity_ids"] if a in acts],
+        "cell_references": [r for r in referenced["cell_references"]
+                            if (r["activity_id"], r["column_id"]) in cells],
+    }
+
+
 def build_annotation_crossrefs(
     annotations: list[dict],
     schedule_properties: list[dict],
@@ -336,6 +357,13 @@ def build_annotation_crossrefs(
                 if m and col_id not in marker_to_cols.get(m, []):
                     marker_to_cols.setdefault(m, []).append(col_id)
     
+    # A marker printed for several notes in one table (NCT03861273 marks every row note '*')
+    # does not tell the notes apart: such a note binds only where its own marker_locations
+    # put it, among the elements that carry the marker (B32).
+    marker_count: dict[str, int] = {}
+    for annot in annotations:
+        marker_count[annot["annotation_marker"]] = marker_count.get(annot["annotation_marker"], 0) + 1
+
     resolved_annotations = []
     property_annotations: dict[str, list[str]] = {}
     column_annotations: dict[str, list[str]] = {}
@@ -355,6 +383,9 @@ def build_annotation_crossrefs(
                 for a, c in marker_to_cells.get(marker, [])
             ]
         }
+        if marker_count[marker] > 1:
+            referenced = at_marker_locations(referenced, annot.get("marker_locations", []),
+                                             prop_by_row, act_by_row)
         
         has_props = bool(referenced["property_ids"])
         has_cols = bool(referenced["column_ids"])

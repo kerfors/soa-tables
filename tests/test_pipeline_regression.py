@@ -240,9 +240,6 @@ KNOWN_BINDING_CONFLICTS = {
     # xannot-025 detector limitation: Tables 9.1.2 and 9.1.3 both print e on both rows — they agree; the
     # detector compares the union of bound rows with the number of tables, not each table's binding.
     "cell_gene_therapy/NCT04323098": {"xannot-011", "xannot-025"},
-    # Known defect, backlog B32: '*' marks several notes in one table and resolve binds by marker string;
-    # these notes belong to Joint X-ray / Joint MRI (doc p.15). Remove when B32 is fixed.
-    "cell_gene_therapy/NCT03861273": {"xannot-021", "xannot-023"},
 }
 CONSOLIDATED = sorted(config.COLLECTIONS_ROOT.glob("*/protocols/*/soa-tables/consolidated/*_consolidated.json"))
 
