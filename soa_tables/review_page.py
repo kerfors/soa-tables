@@ -260,7 +260,8 @@ def _table_model(extraction: dict, sidecar: Path | None, audit_table: dict, pdf:
                     disagreements.append({"page": pdf_page, "row": row, "col": cp,
                                           "extracted": cp in ext_cols, "on_page": cp in page_cols})
             bands.append(band)
-        pages.append({"pdf_page": pdf_page, "doc_page": doc_page, "width_pt": g.width_pt,
+        pages.append({"pdf_page": pdf_page, "doc_page": doc_page, "physical_page": entry["physical_page"],
+                      "width_pt": g.width_pt,
                       "height_pt": g.height_pt, "columns": [[round(a, 1), round(b, 1)] for a, b in g.columns],
                       "col_map": col_map, "col_method": col_method,
                       "unreadable": unreadable.get(pdf_page),
@@ -419,6 +420,8 @@ def render_review_html(model: dict) -> str:
     n_tables = len(model["tables"])
     pages = sorted({p["doc_page"] for t in model["tables"] for p in t["pages"]})
     page_span = f"{pages[0]}–{pages[-1]}" if pages else "?"
+    physical = sorted({p["physical_page"] for t in model["tables"] for p in t["pages"]})
+    physical_span = f"{physical[0]}–{physical[-1]}" if physical else "?"
     return (_TEMPLATE
             .replace("__PID__", pid)
             .replace("__NAV__", nav_block(model["collection"], model["protocol_id"],
@@ -426,6 +429,7 @@ def render_review_html(model: dict) -> str:
             .replace("__COLL__", esc(model["collection_title"]))
             .replace("__NTABLES__", f"{n_tables} table{'s' if n_tables != 1 else ''}")
             .replace("__PAGES__", esc(page_span))
+            .replace("__PHYSICAL__", esc(physical_span))
             .replace("__GENERATED__", esc(model["generated_at"]))
             .replace("__DATA__", data))
 
@@ -567,7 +571,7 @@ footer{padding:8px 22px 20px;font-size:11px;color:var(--muted)}
 </style></head><body>
 <header>
  <h1>__PID__ — review of the SoA extraction</h1>
- <div class="sub">__COLL__ · __NTABLES__ · document pages __PAGES__ · generated __GENERATED__</div>
+ <div class="sub">__COLL__ · __NTABLES__ · document pages __PAGES__ · physical pages __PHYSICAL__ in __PID__.pdf · generated __GENERATED__</div>
 </header>
 __NAV__
 
@@ -605,7 +609,7 @@ __NAV__
  </div>
 </main>
 
-<footer>Page images in <code>__PID___soa_pages/</code>, rendered at ingest by <code>tools/page_map.py --render</code>; the caption strip below each page is synthetic, the page bitmap above it is verbatim. Page numbers (p.NN) are document pages — the page number the transcript uses, from the declared SoA range; printed page footers are unreliable in this corpus and are not used. The RDF names each page by its position in the file of record (<code>pages.json</code> <code>physical_page</code>). Generated from the pipeline's own files: page geometry from the rule-line band detector, row matching as in the row audit, marks from the page text layer compared with the extraction, decisions from the extraction's review items, cross-table relations from consolidation. Selecting a row on the page or in the table highlights it in the other. This page writes nothing: a decision only drafts an entry for the protocol's corrections sidecar.</footer>
+<footer>Page images in <code>__PID___soa_pages/</code>, rendered at ingest by <code>tools/page_map.py --render</code>; the caption strip below each page is synthetic, the page bitmap above it is verbatim. Page numbers (p.NN) are document pages — the page number the transcript uses, from the declared SoA range; printed page footers are unreliable in this corpus and are not used. The physical page — the page's position in the file of record (<code>__PID__.pdf</code>; <code>pages.json</code> <code>physical_page</code>) — is shown in the header and in each page button's tooltip; the RDF names pages by it. Generated from the pipeline's own files: page geometry from the rule-line band detector, row matching as in the row audit, marks from the page text layer compared with the extraction, decisions from the extraction's review items, cross-table relations from consolidation. Selecting a row on the page or in the table highlights it in the other. This page writes nothing: a decision only drafts an entry for the protocol's corrections sidecar.</footer>
 
 <script>
 const D = __DATA__;
@@ -650,7 +654,7 @@ function buildTabs(){
  const tt=document.getElementById('tabletabs'); tt.innerHTML='';
  D.tables.forEach((t,i)=>{ const b=document.createElement('button'); b.className='tbl'+(i===S.t?' on':''); b.textContent='Table '+t.number; b.title=t.title; b.onclick=()=>showTable(i); tt.appendChild(b); });
  const pt=document.getElementById('pagetabs'); pt.innerHTML='';
- T().pages.forEach((p,i)=>{ const b=document.createElement('button'); b.className=i===S.page?'on':''; b.textContent='p.'+p.doc_page; b.title='document page '+p.doc_page+' — the page number the transcript uses (printed page footers are not used)'; b.onclick=()=>showPage(i); pt.appendChild(b); });
+ T().pages.forEach((p,i)=>{ const b=document.createElement('button'); b.className=i===S.page?'on':''; b.textContent='p.'+p.doc_page; b.title='document page '+p.doc_page+' — the page number the transcript uses; physical page '+p.physical_page+' in '+D.protocol_id+'.pdf (printed page footers are not used)'; b.onclick=()=>showPage(i); pt.appendChild(b); });
 }
 function showTable(i){ S.t=i; S.page=0; S.selRow=null; S.selProp=null; S.noteRows=[]; S.altRows=[]; S.foldRows=[]; buildTabs(); buildTable(); buildDecisions(); buildNotes(); buildChecks(); showPage(0); }
 

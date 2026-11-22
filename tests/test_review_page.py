@@ -103,6 +103,9 @@ def test_full_build_places_every_page_and_references_prerendered_images():
             assert p["img"] == f"../../NCT04677179_soa_pages/p{p['pdf_page']:02d}.png"
             assert (SOA_PAGES / f"p{p['pdf_page']:02d}.png").exists()
             assert 0.9 < p["page_frac"] < 1.0
+    physical = {e["pdf_page"]: e["physical_page"] for e in json.loads((SOA_PAGES / "pages.json").read_text())["pages"]}
+    assert all(p["physical_page"] == physical[p["pdf_page"]] for t in model["tables"] for p in t["pages"])
+    assert "· physical pages " in html and " in NCT04677179.pdf ·" in html
     assert "</script>" in html and "<\\/" not in html.split("<script>")[0]
 
 
