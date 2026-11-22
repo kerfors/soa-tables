@@ -1626,14 +1626,11 @@ class VisualizeStep(PipelineStepBase):
             all_tables = []
             resolved_files = config.find_resolved_files(protocol_id, collection)
             for rf in resolved_files:
-                try:
-                    with open(rf) as f:
-                        rd = json.load(f)
-                    tnum = rd.get('table_metadata', {}).get('table_number', 0)
-                    html_name = rf.name.replace('_resolved.json', '_resolved.html')
-                    all_tables.append((tnum, html_name))
-                except Exception:
-                    pass
+                with open(rf) as f:
+                    rd = json.load(f)
+                tnum = rd.get('table_metadata', {}).get('table_number', 0)
+                html_name = rf.name.replace('_resolved.json', '_resolved.html')
+                all_tables.append((tnum, html_name))
             all_tables.sort(key=lambda x: x[0])
             
             nav = NavContext(

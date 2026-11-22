@@ -248,30 +248,27 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
             # Read stats from JSON
             cons_json = cons_dir / f"{protocol_id}_consolidated.json"
             if cons_json.exists():
-                try:
-                    with open(cons_json) as f:
-                        data = json.load(f)
-                    meta = data.get('consolidation_metadata', {})
-                    result['tables'] = len(meta.get('source_tables', []))
-                    result['activities'] = meta.get('unified_activity_count', 0)
-                    result['compression'] = meta.get('compression_percent', 0)
-                    result['columns'] = sum(
-                        len(cols) for cols in data.get('timeline_segments', {}).values()
-                    )
-                    # Redaction count: a data-quality signal for anyone
-                    # selecting protocols (public documents black-bar some
-                    # rows; is_redacted is exception-based in the JSON).
-                    result['redacted'] = sum(
-                        1 for ua in data.get('unified_activities', [])
-                        if ua.get('is_redacted')
-                    )
-                    # Cross-table matches to review and how many are decided
-                    # (consolidation corrections sidecar); absent before 1.4.
-                    review_stats = meta.get('review_stats', {})
-                    result['matches_total'] = review_stats.get('total', 0)
-                    result['matches_open'] = review_stats.get('open', 0)
-                except Exception:
-                    pass
+                with open(cons_json) as f:
+                    data = json.load(f)
+                meta = data.get('consolidation_metadata', {})
+                result['tables'] = len(meta.get('source_tables', []))
+                result['activities'] = meta.get('unified_activity_count', 0)
+                result['compression'] = meta.get('compression_percent', 0)
+                result['columns'] = sum(
+                    len(cols) for cols in data.get('timeline_segments', {}).values()
+                )
+                # Redaction count: a data-quality signal for anyone
+                # selecting protocols (public documents black-bar some
+                # rows; is_redacted is exception-based in the JSON).
+                result['redacted'] = sum(
+                    1 for ua in data.get('unified_activities', [])
+                    if ua.get('is_redacted')
+                )
+                # Cross-table matches to review and how many are decided
+                # (consolidation corrections sidecar); absent before 1.4.
+                review_stats = meta.get('review_stats', {})
+                result['matches_total'] = review_stats.get('total', 0)
+                result['matches_open'] = review_stats.get('open', 0)
     
     return result
 
