@@ -29,15 +29,29 @@ map; when a map decision changes, re-run --render so stamp and map cannot drift 
 The review page consumes these images and pages.json. Extraction input stays the PDF plus
 PAGEMAP.md — stamped images are human-facing.
 
+Physical pages (--physical)
+---------------------------
+The document page is the numbering the transcript uses (from the declared SoA range in
+studies_protocols.xlsx). It is not always the page's position in the file of record
+(`<STUDY>.pdf`, sha256 in register.csv): measured 2026-11-21, it runs one or two lower in 14 of
+the 22 usdm_data protocols. --physical adds `physical_page` to every pages.json entry: the one
+page of the file of record within doc_page ± PHYSICAL_WINDOW whose text equals the excerpt
+page's text (whitespace normalised), or, for a page without text, whose 20-dpi grey bitmap is
+equal. No match or more than one stops before that study's pages.json is written.
+physical_page is for the RDF's Page IRIs (documents/identity.md: a Page is a physical page of the
+file of record); the transcript keeps the document page.
+
 Usage:
     python3 tools/page_map.py --collection usdm_data                 # report, decide nothing
     python3 tools/page_map.py --collection usdm_data --write         # write blind/<STUDY>/PAGEMAP.md
     python3 tools/page_map.py --collection usdm_data --render        # write <protocol>/<STUDY>_soa_pages/
     python3 tools/page_map.py --collection usdm_data --back NCT04184622 --back NCT03637764
     python3 tools/page_map.py --collection usdm_data --study NCT03637764 --write   # named studies only
+    python3 tools/page_map.py --collection usdm_data --physical      # add physical_page to pages.json
 """
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -50,6 +64,12 @@ from soa_tables import config  # noqa: E402
 
 RENDER_DPI = 150         # extraction-grade; the review page scales down in HTML
 STRIP_PT = 18            # caption strip height in points, scaled by RENDER_DPI
+PHYSICAL_WINDOW = 3      # --physical looks for the page within doc_page ± this
+NOTE = ("document page = the page number the transcript uses (table page_start/page_end, source_page), "
+        "from the declared SoA range in studies_protocols.xlsx; printed page footers are not used. "
+        "physical_page = the same page's position in the file of record (<study>.pdf), added by "
+        "tools/page_map.py --physical. The caption strip below each page bitmap is synthetic; "
+        "the page bitmap above it is verbatim pdftoppm output.")
 
 
 def pdf_pages(pdf):
@@ -127,10 +147,69 @@ def render_study_pages(pdf, study, pages, declared_last, out_dir):
                         "page_height_px": page.height})
     (out_dir / "pages.json").write_text(json.dumps(
         {"study": study, "dpi": RENDER_DPI, "strip_px": strip_px,
-         "note": "document page = sequence position in the source protocol PDF; printed page "
-                 "footers are not used. The caption strip below each page bitmap is synthetic; "
-                 "the page bitmap above it is verbatim pdftoppm output.",
+         "note": NOTE,
          "pages": entries}, indent=2) + "\n")
+
+
+@functools.lru_cache(maxsize=None)
+def _norm_text(pdf, i):
+    return re.sub(r"\s+", " ", page_text(pdf, i, layout=False)).strip()
+
+
+@functools.lru_cache(maxsize=None)
+def _bitmap(pdf, i):
+    return subprocess.run(["pdftoppm", "-q", "-r", "20", "-gray", "-f", str(i), "-l", str(i), str(pdf)],
+                          capture_output=True, check=True).stdout
+
+
+def add_physical_pages(study, soa_pdf, full_pdf, pages_json):
+    """Write physical_page into every entry of pages_json (see module docstring). Returns {pdf_page: physical}."""
+    doc = json.loads(pages_json.read_text())
+    n_full = pdf_pages(full_pdf)
+    found = {}
+    for e in doc["pages"]:
+        lo, hi = max(1, e["doc_page"] - PHYSICAL_WINDOW), min(n_full, e["doc_page"] + PHYSICAL_WINDOW)
+        text = _norm_text(soa_pdf, e["pdf_page"])
+        if text:
+            hits = [j for j in range(lo, hi + 1) if _norm_text(full_pdf, j) == text]
+        else:
+            ref = _bitmap(soa_pdf, e["pdf_page"])
+            hits = [j for j in range(lo, hi + 1) if not _norm_text(full_pdf, j) and _bitmap(full_pdf, j) == ref]
+        if len(hits) != 1:
+            sys.exit(f"{study}: excerpt page {e['pdf_page']} (document page {e['doc_page']}): "
+                     f"{len(hits)} matching pages in {full_pdf.name} {lo}-{hi} {hits} — pages.json not written")
+        found[e["pdf_page"]] = hits[0]
+    entries = []
+    for e in doc["pages"]:
+        out = {"pdf_page": e["pdf_page"], "doc_page": e["doc_page"], "physical_page": found[e["pdf_page"]]}
+        out.update({k: v for k, v in e.items() if k not in out})
+        entries.append(out)
+    doc["note"] = NOTE
+    doc["pages"] = entries
+    pages_json.write_text(json.dumps(doc, indent=2) + "\n")
+    return found
+
+
+def physical(args):
+    manifest, root = read_manifest(args.collection)
+    unknown = sorted(set(args.study) - set(manifest))
+    if unknown:
+        sys.exit(f"--study not in the {args.collection} manifest: {', '.join(unknown)}")
+    for study in sorted(manifest):
+        if args.study and study not in args.study:
+            continue
+        pages_json = root / study / f"{study}_soa_pages" / "pages.json"
+        if not pages_json.exists():
+            print(f"  {study:<14} no pages.json — skipped")
+            continue
+        full_pdf = root / study / f"{study}.pdf"
+        if not full_pdf.exists():
+            sys.exit(f"{study}: file of record {full_pdf} not found — pages.json not written")
+        found = add_physical_pages(study, root / study / f"{study}_soa.pdf", full_pdf, pages_json)
+        docs = {e["pdf_page"]: e["doc_page"] for e in json.loads(pages_json.read_text())["pages"]}
+        shifts = sorted({found[i] - docs[i] for i in found})
+        print(f"  {study:<14} {len(found):>2} page(s)  physical - document: {shifts}")
+    return 0
 
 
 def main():
@@ -145,7 +224,11 @@ def main():
     ap.add_argument("--explicit", default=None, help='JSON {"STUDY": [63,64,72,78]} for a non-contiguous excerpt')
     ap.add_argument("--study", action="append", default=[],
                     help="map only this study (repeatable); default: every study in the manifest (item 20d)")
+    ap.add_argument("--physical", action="store_true",
+                    help="add physical_page (position in the file of record) to every pages.json entry")
     args = ap.parse_args()
+    if args.physical:
+        return physical(args)
 
     explicit = json.loads(Path(args.explicit).read_text()) if args.explicit else {}
     manifest, root = read_manifest(args.collection)
