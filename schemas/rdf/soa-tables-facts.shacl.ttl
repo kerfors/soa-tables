@@ -94,7 +94,7 @@ st:lastPage          a rdf:Property ; rdfs:label "last page" .
 st:rowPosition       a rdf:Property ; rdfs:label "row position" ; rdfs:comment "Printed row_position." .
 st:columnPosition    a rdf:Property ; rdfs:label "column position" ; rdfs:comment "Printed column_position." .
 st:inTable           a rdf:Property ; rdfs:label "in table" .
-st:onPage            a rdf:Property ; rdfs:label "on page" ; rdfs:comment "The page an activity row was read from (extraction source_page; the .verified.json where present). Tiled tables: the page the row was first read from. Property rows have none: the extraction gives no page for a header band; the table's firstPage and lastPage bound it." .
+st:onPage            a rdf:Property ; rdfs:label "on page" ; rdfs:comment "The page an activity row was read from (extraction source_page; the .verified.json where present), as its physical page in the file (pages.json physical_page). Tiled tables: the page the row was first read from. Property rows have none: the extraction gives no page for a header band; the table's firstPage and lastPage bound it." .
 st:hierarchyPosition a rdf:Property ; rdfs:label "hierarchy position" ; rdfs:comment "Position of a property row in its table's property hierarchy, from 1." .
 st:marker            a rdf:Property ; rdfs:label "marker" ; rdfs:comment "The printed marker, as printed." .
 st:row               a rdf:Property ; rdfs:label "row" .

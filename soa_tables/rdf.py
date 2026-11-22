@@ -10,6 +10,8 @@ Inputs (one protocol folder):
   extraction              source_page per activity row (the .verified.json where present)
   corrections sidecar     the decisions (when present)
   {protocol}.pdf          the file of record: its sha256 names the file, the pages and every element
+  {protocol}_soa_pages/pages.json   physical_page per document page: Page IRIs and st:pageNumber name the
+                          physical page of the file of record (tools/page_map.py --physical)
 Match items come from visualize.build_matches_model, the function behind the consolidated page.
 
 Round trip (consolidated JSON -> RDF -> JSON): every consolidated field is STORED (in the RDF), DERIVED (rebuilt on
@@ -63,16 +65,19 @@ def load_inputs(soa: Path, sha256: str = None) -> dict:
         verified = raw.with_name(raw.stem + ".verified.json")
         extraction_files.append(verified if verified.exists() else raw)
     sidecar = corrections_path(soa / "consolidated", pid)
+    pages_file = soa.parent / f"{pid}_soa_pages" / "pages.json"
     resolved = [json.loads(f.read_text()) for f in resolved_files]
     consolidated = json.loads(consolidated_file.read_text())
     extractions = [json.loads(f.read_text()) for f in extraction_files]
     corrections_doc = json.loads(sidecar.read_text()) if sidecar.exists() else None
+    physical = {e["doc_page"]: e["physical_page"] for e in json.loads(pages_file.read_text())["pages"]}
     row_names = {(r["table_metadata"]["table_number"], a["activity_id"]): a["activity_name"]
                  for r in resolved for a in r["activities"]}
     items = V.build_matches_model(consolidated, row_names, corrections_doc)["items"]
-    inputs = resolved_files + [consolidated_file] + extraction_files + ([sidecar] if sidecar.exists() else [])
+    inputs = (resolved_files + [consolidated_file] + extraction_files + ([sidecar] if sidecar.exists() else [])
+              + [pages_file])
     return {"protocol_id": pid, "pdf": pdf, "sha256": sha256, "resolved": resolved, "consolidated": consolidated,
-            "extractions": extractions, "corrections_doc": corrections_doc, "items": items,
+            "extractions": extractions, "corrections_doc": corrections_doc, "items": items, "physical": physical,
             "input_paths": inputs}
 
 
@@ -164,9 +169,13 @@ def build_dataset(inp: dict, collections_commit: str, code_commit: str) -> Datas
         return URIRef(I.element_iri(m, local_id))
 
     def page(n: int) -> URIRef:
-        node = URIRef(I.page_iri(m, n))
+        """n: the document page the transcript uses; the Page is its physical page in the file of record."""
+        if n not in inp["physical"]:
+            raise ValueError(f"document page {n}: no pages.json entry")
+        p = inp["physical"][n]
+        node = URIRef(I.page_iri(m, p))
         g.add((node, RDF.type, ST.Page))
-        g.add((node, ST.pageNumber, Literal(n)))
+        g.add((node, ST.pageNumber, Literal(p)))
         g.add((node, ST.inFile, URIRef(m)))
         return node
 

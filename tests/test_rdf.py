@@ -8,6 +8,7 @@ Per protocol with a consolidated JSON in the collections (the fixtures hold no f
   P3 two builds give byte-identical TriG; every element IRI is a minted local id, and every minted id is used
   P4 open / total matches in the graph = the consolidated page's (visualize.build_matches_model) = review_stats
   P5 every activity row has one page, inside its table's page range; property rows have none
+  P9 every Page is the physical page pages.json gives for the document page (rows' source_page, tables' range)
 P8, per collection: every protocol folder without a consolidated JSON has an excluded_reason in studies_protocols.xlsx.
 The commits pinned on the transcription are fixed strings here; rdf.build_trig reads them from git.
 Step 5 (section at the end): register.csv at the collections repo root, and the committed TriG per protocol.
@@ -138,6 +139,30 @@ def test_p5_every_activity_row_has_one_page_in_its_table_range(case):
 
 
 @pytest.mark.parametrize("case", CASES, ids=IDS)
+def test_p9_pages_are_the_physical_pages_of_pages_json(case):
+    inp, ds, _, _ = built(case[2])
+    g = R.transcription_graph(ds)
+    m = I.file_iri(inp["sha256"])
+    physical = inp["physical"]
+
+    def number(page):
+        n = int(g.value(page, ST.pageNumber))
+        assert str(page) == I.page_iri(m, n), page
+        return n
+
+    source_page = R.row_pages(inp["resolved"], inp["extractions"])
+    for row in g.subjects(RDF.type, ST.SourceActivityRow):
+        t = int(g.value(g.value(row, ST.inTable), ST.tableNumber))
+        key = (t, int(g.value(row, ST.rowPosition)))
+        assert number(g.value(row, ST.onPage)) == physical[source_page[key]], row
+    tables = {int(g.value(t, ST.tableNumber)): t for t in g.subjects(RDF.type, ST.SourceTable)}
+    for r in inp["resolved"]:
+        tm = r["table_metadata"]
+        assert number(g.value(tables[tm["table_number"]], ST.firstPage)) == physical[tm["page_start"]]
+        assert number(g.value(tables[tm["table_number"]], ST.lastPage)) == physical[tm["page_end"]]
+
+
+@pytest.mark.parametrize("case", CASES, ids=IDS)
 def test_decisions_equal_the_sidecar(case):
     """Op, reason, by and at as the sidecar writes them (at keeps its Z through TriG)."""
     inp, _, trig, minted = built(case[2])
@@ -191,6 +216,14 @@ def test_field_on_no_list_stops():
     broken["unified_activities"][0]["new_field"] = 1
     with pytest.raises(ValueError, match="on no list"):
         R.canonical(broken, inp["resolved"], minted)
+
+
+def test_document_page_without_pages_json_entry_stops():
+    inp = dict(built(first_case()[2])[0])
+    start = inp["resolved"][0]["table_metadata"]["page_start"]
+    inp["physical"] = {d: p for d, p in inp["physical"].items() if d != start}
+    with pytest.raises(ValueError, match="no pages.json entry"):
+        R.build_dataset(inp, *COMMITS)
 
 
 def test_commit_must_be_40_hex():

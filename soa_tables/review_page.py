@@ -605,7 +605,7 @@ __NAV__
  </div>
 </main>
 
-<footer>Page images in <code>__PID___soa_pages/</code>, rendered at ingest by <code>tools/page_map.py --render</code>; the caption strip below each page is synthetic, the page bitmap above it is verbatim. Page numbers (p.NN) are document pages — the page's sequence position in the source protocol PDF; printed page footers are unreliable in this corpus and are not used. Generated from the pipeline's own files: page geometry from the rule-line band detector, row matching as in the row audit, marks from the page text layer compared with the extraction, decisions from the extraction's review items, cross-table relations from consolidation. Selecting a row on the page or in the table highlights it in the other. This page writes nothing: a decision only drafts an entry for the protocol's corrections sidecar.</footer>
+<footer>Page images in <code>__PID___soa_pages/</code>, rendered at ingest by <code>tools/page_map.py --render</code>; the caption strip below each page is synthetic, the page bitmap above it is verbatim. Page numbers (p.NN) are document pages — the page number the transcript uses, from the declared SoA range; printed page footers are unreliable in this corpus and are not used. The RDF names each page by its position in the file of record (<code>pages.json</code> <code>physical_page</code>). Generated from the pipeline's own files: page geometry from the rule-line band detector, row matching as in the row audit, marks from the page text layer compared with the extraction, decisions from the extraction's review items, cross-table relations from consolidation. Selecting a row on the page or in the table highlights it in the other. This page writes nothing: a decision only drafts an entry for the protocol's corrections sidecar.</footer>
 
 <script>
 const D = __DATA__;
@@ -650,7 +650,7 @@ function buildTabs(){
  const tt=document.getElementById('tabletabs'); tt.innerHTML='';
  D.tables.forEach((t,i)=>{ const b=document.createElement('button'); b.className='tbl'+(i===S.t?' on':''); b.textContent='Table '+t.number; b.title=t.title; b.onclick=()=>showTable(i); tt.appendChild(b); });
  const pt=document.getElementById('pagetabs'); pt.innerHTML='';
- T().pages.forEach((p,i)=>{ const b=document.createElement('button'); b.className=i===S.page?'on':''; b.textContent='p.'+p.doc_page; b.title='document page '+p.doc_page+' — sequence position in the source protocol PDF (printed page footers are not used)'; b.onclick=()=>showPage(i); pt.appendChild(b); });
+ T().pages.forEach((p,i)=>{ const b=document.createElement('button'); b.className=i===S.page?'on':''; b.textContent='p.'+p.doc_page; b.title='document page '+p.doc_page+' — the page number the transcript uses (printed page footers are not used)'; b.onclick=()=>showPage(i); pt.appendChild(b); });
 }
 function showTable(i){ S.t=i; S.page=0; S.selRow=null; S.selProp=null; S.noteRows=[]; S.altRows=[]; S.foldRows=[]; buildTabs(); buildTable(); buildDecisions(); buildNotes(); buildChecks(); showPage(0); }
 
