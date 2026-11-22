@@ -18,7 +18,7 @@ bands = ["numpy"]
 # Collection index: the study manifest (studies_protocols.xlsx) and the rendered extraction
 # logs. It fails loudly without these.
 index = ["openpyxl", "markdown"]
-test = ["pytest", "pyshacl"]
+test = ["pytest", "pyshacl", "jsonschema"]
 
 [project.scripts]
 soa-tables-row-audit = "soa_tables.row_audit:main"

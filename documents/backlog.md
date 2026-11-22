@@ -68,7 +68,7 @@ decided `.verified.json` except the B4 line breaks; gate 0 FAIL. Existing corpus
 | B27 | open | `tools/gate.py` | Check 14 on a mixed-version corpus (inv 21c): an accepted-versions list or an env override, so calibration on published tables does not FAIL 14 on every table. | Matters for calibration and acceptance runs. |
 | B28 | open | `tools/promote_dryrun.py` | Hard-codes the sweep-1 promotion (`RETIRE` / `KEEP`, "Phase 3" docstring) — take the lists from arguments or a small JSON per run (inv 27b). | Small to medium. |
 | B29 | open | `tools/gate.py` / new check | Page-break defects (inv 17): (a) a mark-free row at a page top whose label continues the last row of the previous page; (b) reprinted header values that disagree across pages. | Small to medium. |
-| B31 | open | `pyproject.toml` | Add `jsonschema` to the `test` extra: four test modules (and `tools/gate.py`) import it, so a fresh `pip install .[test]` fails at collection. | Found setting up a fresh venv on 534d793. |
+| B31 | done | `pyproject.toml` | Add `jsonschema` to the `test` extra: four test modules (and `tools/gate.py`) import it, so a fresh `pip install .[test]` fails at collection. | Found setting up a fresh venv on 534d793. |
 
 ## E. Ops and routine
 
