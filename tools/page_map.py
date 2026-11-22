@@ -95,8 +95,28 @@ def first_lines(pdf, i, n=3):
     return (meaty or lines)[:n]
 
 
+def parse_soa_pages(value):
+    """soa_pages -> [(first, last), ...]: "13-18" -> [(13, 18)]; "5" -> [(5, 5)];
+    "16-18,85-87" -> [(16, 18), (85, 87)] where the SoA tables sit apart in the document.
+
+    Ranges in document order, none reversed, none overlapping or touching the one before
+    (touching ranges are one range). Anything else stops.
+    """
+    spans = []
+    for part in str(value).split(","):
+        part = part.strip()
+        a, b = (int(x) for x in part.split("-")) if "-" in part else (int(part), int(part))
+        if b < a or (spans and a <= spans[-1][1] + 1):
+            raise ValueError(f"soa_pages {value!r}: range {part!r} is reversed or not after the one before")
+        spans.append((a, b))
+    return spans
+
+
 def read_manifest(collection):
-    """(nct_id -> (first_doc_page, last_doc_page)) from the collection's studies_protocols.xlsx."""
+    """(nct_id -> [(first_doc_page, last_doc_page), ...]) from the collection's studies_protocols.xlsx.
+
+    One range for most studies; several where the declared soa_pages lists more (parse_soa_pages).
+    """
     import openpyxl
     root = Path(config.COLLECTIONS[collection])
     book = openpyxl.load_workbook(root.parent / "studies_protocols.xlsx")
@@ -107,9 +127,7 @@ def read_manifest(collection):
         r = dict(zip(header, row))
         if not r.get("nct_id") or not r.get("soa_pages"):
             continue
-        text = str(r["soa_pages"])
-        a, b = (int(x) for x in text.split("-")) if "-" in text else (int(text), int(text))
-        out[r["nct_id"]] = (a, b)
+        out[r["nct_id"]] = parse_soa_pages(r["soa_pages"])
     return out, root
 
 
@@ -237,7 +255,8 @@ def main():
     unknown = sorted(set(args.study) - set(manifest))
     if unknown:
         sys.exit(f"--study not in the {args.collection} manifest: {', '.join(unknown)}")
-    for study, (a, b) in sorted(manifest.items()):
+    for study, spans in sorted(manifest.items()):
+        a, b = spans[0][0], spans[-1][1]
         if args.study and study not in args.study:
             continue
         pdf = root / study / f"{study}_soa.pdf"
@@ -245,11 +264,17 @@ def main():
             print(f"  {study:<14} no _soa.pdf — skipped")
             continue
         n = pdf_pages(pdf)
-        declared = b - a + 1
+        declared_pages = [p for first, last in spans for p in range(first, last + 1)]
+        declared = len(declared_pages)
         extra = n - declared
 
         if study in explicit:
             pages, how = explicit[study], "explicit (non-contiguous excerpt)"
+        elif len(spans) > 1:
+            if extra != 0:
+                sys.exit(f"{study}: {len(spans)} declared ranges ({declared} pages) "
+                         f"but the excerpt has {n} PDF pages")
+            pages, how = declared_pages, f"{len(spans)} declared ranges; excerpt == declared ranges"
         elif extra == 0:
             pages, how = [a + i for i in range(n)], "contiguous; excerpt == declared range"
         elif extra < 0:
