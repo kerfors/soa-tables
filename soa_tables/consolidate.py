@@ -1192,8 +1192,9 @@ def find_cross_table_binding_conflicts(data: dict) -> List[Tuple[str, List[str]]
     yields at most one activity per table; more than that means the note genuinely
     qualifies several activities (a legend or a multi-row note) and is not a conflict.
 
-    Measured over 22 protocols: 4 conflicts, all worth a look. The same measure run
-    against NCT04677179 before its Table 4 page was restored named the two notes that
+    Measured 2026-11-22 over 45 protocols: 7 conflicts in 5 protocols, each checked against
+    the pages — tests/test_pipeline_regression.py KNOWN_BINDING_CONFLICTS. The same measure
+    run against NCT04677179 before its Table 4 page was restored named the two notes that
     fingerprint the loss (AESIs and "Locally performed.").
     """
     activity_name = {a.get("xact_id"): a.get("activity_name")

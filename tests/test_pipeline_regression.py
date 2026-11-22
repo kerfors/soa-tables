@@ -225,6 +225,38 @@ def test_degenerate_typing_detector_fires_on_known_bad():
         "detector must fire on the all-source_note historical state"
 
 
+# Cross-table binding conflicts in the published collections, each checked against the pages
+# (backlog B24, 2026-11-22). A conflict not listed here fails until it is checked; a listed one that
+# no longer fires fails too, so the list is cleared when its cause is fixed.
+KNOWN_BINDING_CONFLICTS = {
+    # Source-faithful: T1 prints the sentence under Stool sample only, T2 under both rows (doc pp.170, 175).
+    "usdm_data/NCT02291289": {"xannot-022"},
+    # Source-faithful: the same PK note printed on two rows (detector limitation, see the negative control).
+    "usdm_data/NCT04677179": {"xannot-026"},
+    # Source-faithful: Table 2 (doc p.21) marks both Factor IX inhibitor rows d; Table 4 has only the
+    # Nijmegen row (f) — the local-monitoring row is in Table 2 only.
+    "cell_gene_therapy/NCT03489291": {"xannot-011"},
+    # xannot-011 source-faithful: Table 9.1.1 prints j on Serum only (Plasma carries i); 9.1.4 f on both.
+    # xannot-025 detector limitation: Tables 9.1.2 and 9.1.3 both print e on both rows — they agree; the
+    # detector compares the union of bound rows with the number of tables, not each table's binding.
+    "cell_gene_therapy/NCT04323098": {"xannot-011", "xannot-025"},
+    # Known defect, backlog B32: '*' marks several notes in one table and resolve binds by marker string;
+    # these notes belong to Joint X-ray / Joint MRI (doc p.15). Remove when B32 is fixed.
+    "cell_gene_therapy/NCT03861273": {"xannot-021", "xannot-023"},
+}
+CONSOLIDATED = sorted(config.COLLECTIONS_ROOT.glob("*/protocols/*/soa-tables/consolidated/*_consolidated.json"))
+
+
+@pytest.mark.skipif(not CONSOLIDATED, reason="needs the collections")
+def test_cross_table_binding_conflicts_are_the_known_ones():
+    found = {}
+    for path in CONSOLIDATED:
+        conflicts = find_cross_table_binding_conflicts(json.loads(path.read_text()))
+        if conflicts:
+            found[f"{path.parts[-6]}/{path.parts[-4]}"] = {x for x, _ in conflicts}
+    assert found == KNOWN_BINDING_CONFLICTS
+
+
 def test_cross_table_conflict_detector_fires_on_known_bad():
     """Negative control — NCT04677179's consolidated output as committed at a96cf0c,
     before the missing Genetics sample row was restored in Tables 2-4. The DNA
