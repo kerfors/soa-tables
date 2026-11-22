@@ -44,6 +44,8 @@ def build_scratch(studies):
         if not staged:
             print(f"  {study}: nothing staged — left at baseline")
             continue
+        # A brand-new protocol has no extracted/ folder yet (B6).
+        ext.mkdir(parents=True, exist_ok=True)
 
         # Remove every previous artefact for this study, not just Layer 1. Consolidate reads
         # resolved/, so a stale resolved JSON for a table the re-extraction no longer produces
@@ -131,8 +133,25 @@ def run_row_audit():
     return out
 
 
+def select_studies(args):
+    """The studies named, or every staged study with a protocol folder in COLLECTION. STAGING can
+    hold studies of more than one collection; the others are skipped, as in promote_dryrun.py."""
+    protocols = REAL / COLLECTION / "protocols"
+    if args:
+        missing = [s for s in args if not (protocols / s).is_dir()]
+        if missing:
+            sys.exit(f"not in collection {COLLECTION}: {', '.join(missing)}")
+        return list(args)
+    staged_all = sorted(p.name for p in STAGING.iterdir() if p.is_dir())
+    studies = [s for s in staged_all if (protocols / s).is_dir()]
+    for s in staged_all:
+        if s not in studies:
+            print(f"  {s}: not in collection {COLLECTION} — skipped")
+    return studies
+
+
 def main():
-    studies = sys.argv[1:] or sorted(p.name for p in STAGING.iterdir() if p.is_dir())
+    studies = select_studies(sys.argv[1:])
     print(f"Scratch collection: {SCRATCH}")
     print(f"Studies: {', '.join(studies)}\n")
     print("-- build scratch --")

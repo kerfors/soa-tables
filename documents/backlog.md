@@ -61,14 +61,14 @@ decided `.verified.json` except the B4 line breaks; gate 0 FAIL. Existing corpus
 
 | # | Status | File | Change | Notes |
 |---|---|---|---|---|
-| B6 | open | `tools/dryrun.py` | Create `<pid>/soa-tables/extracted/` when missing (brand-new protocol). | Failed with FileNotFoundError at `build_scratch`; worked around with an empty folder. |
-| B26 | open | `tools/dryrun.py` | Take only staged studies that have a protocol folder in `SOA_TABLES_COLLECTION`; print the skipped (inv 12, same filter as `promote_dryrun.py`). | Still takes every folder in STAGING (line 135). Do with B6. |
+| B6 | done | `tools/dryrun.py` | Create `<pid>/soa-tables/extracted/` when missing (brand-new protocol). | Failed with FileNotFoundError at `build_scratch`; worked around with an empty folder. |
+| B26 | done | `tools/dryrun.py` | Take only staged studies that have a protocol folder in `SOA_TABLES_COLLECTION`; print the skipped (inv 12, same filter as `promote_dryrun.py`). | Still takes every folder in STAGING (line 135). Do with B6. |
 | B7 | open | `notebooks/00_download_extract.ipynb` | `extract_soa` accepts the comma-separated ranges (`16-18,85-87`); reuse `page_map.parse_soa_pages`. | Notebooks are run by hand; cell change only. |
 | B8 | open | `tools/page_map.py` | Report line prints the declared ranges, not first–last ("declared 16-87"). | Cosmetic; stdout only. |
 | B27 | open | `tools/gate.py` | Check 14 on a mixed-version corpus (inv 21c): an accepted-versions list or an env override, so calibration on published tables does not FAIL 14 on every table. | Matters for calibration and acceptance runs. |
 | B28 | open | `tools/promote_dryrun.py` | Hard-codes the sweep-1 promotion (`RETIRE` / `KEEP`, "Phase 3" docstring) — take the lists from arguments or a small JSON per run (inv 27b). | Small to medium. |
 | B29 | open | `tools/gate.py` / new check | Page-break defects (inv 17): (a) a mark-free row at a page top whose label continues the last row of the previous page; (b) reprinted header values that disagree across pages. | Small to medium. |
-| B31 | done | `pyproject.toml` | Add `jsonschema` to the `test` extra: four test modules (and `tools/gate.py`) import it, so a fresh `pip install .[test]` fails at collection. | Found setting up a fresh venv on 534d793. |
+| B31 | done 9c02057 | `pyproject.toml` | Add `jsonschema` to the `test` extra: four test modules (and `tools/gate.py`) import it, so a fresh `pip install .[test]` fails at collection. | Found setting up a fresh venv on 534d793. |
 
 ## E. Ops and routine
 
@@ -78,7 +78,7 @@ decided `.verified.json` except the B4 line breaks; gate 0 FAIL. Existing corpus
 | B13 | open | Write into the routine: revert timestamp-only regenerations (`resolved_at`, `consolidated_at`, `generated`, `audited_at`, root index footer) with `git restore` before a data commit. |
 | B14 | open | Manifest rule for `sponsor`: **as printed on the document** (decided 2026-11-22), not the current AACT lead sponsor — the document is the file of record. To do: write the rule where the manifest is described, and correct NCT03739203 (document Allergan; AbbVie, from AACT, is written now); check the other protocols for the same mismatch. |
 | B15 | open | `tools/README.md`: one paragraph on new protocols with no baseline (the cell_gene_therapy / misc_studies method: no blinding, unredacted prompt); today it describes only the re-extraction harness. |
-| B30 | done (this file) | The backlog lives in the repo (`documents/backlog.md`), as soa2usdm kept `inventory-improvements.md`. |
+| B30 | done 371bacc | The backlog lives in the repo (`documents/backlog.md`), as soa2usdm kept `inventory-improvements.md`. |
 
 ## Not carried over (soa2usdm items outside soa-tables, or settled)
 - Done before the split (inherited): inv 1, 2, 4, 5, 6, 9, 10, 11, 14, 15, 16, 18, 19, 23, 24, 28; the parts of 20, 21,
