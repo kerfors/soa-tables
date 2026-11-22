@@ -488,6 +488,7 @@ EXPECTED_HEADER_BOUND = {
     "usdm_data/NCT04677179": 1,
     "usdm_data/NCT04730349": 1,
     "cell_gene_therapy/NCT05714345": 1,   # footnote 19 printed on the Lymphodepletion group band
+    "misc_studies/NCT04304508": 1,   # footnote m printed on the 'Study drug administration' group band (doc p.13)
 }
 
 
