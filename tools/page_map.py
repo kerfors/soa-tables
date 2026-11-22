@@ -286,7 +286,8 @@ def main():
         else:
             pages, how = None, f"{extra} extra page(s) — front or back NOT decided"
 
-        print(f"  {study:<14} pdf {n:>2}p  declared {a}-{b:<5} {how}")
+        ranges = "".join(f"{first}-{last}," for first, last in spans[:-1])
+        print(f"  {study:<14} pdf {n:>2}p  declared {ranges}{spans[-1][0]}-{b:<5} {how}")
         if pages is None:
             undecided.append(study)
             front = [b - (n - 1 - i) for i in range(n)]
