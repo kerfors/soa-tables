@@ -3,7 +3,7 @@
 Does exactly what the real promotion will do, so the result can be checked before anything on the
 device is touched:
 
-  * install every staged extraction JSON and uncertainty report
+  * install every staged extraction JSON and extraction log
   * delete the derived artefacts of the OLD corpus for those studies — extracted/, resolved/ and
     consolidated/. Consolidate reads resolved/, so a stale resolved JSON for a table the
     re-extraction no longer produces (CDISC_Pilot T2, NCT04004988 T2) walks back into the
@@ -70,7 +70,8 @@ def build():
             continue
 
         for p in list(ext.glob("*_extraction.json")) + list(ext.glob("*_extraction.verified.json")) \
-                + list(ext.glob("*_extraction_viewer.html")) + list(ext.glob("*_uncertainty_report.md")):
+                + list(ext.glob("*_extraction_viewer.html")) + list(ext.glob("*_extraction_log.md")) \
+                + list(ext.glob("*_uncertainty_report.md")):  # old name: B36
             p.unlink()
             removed += 1
         for sub in ("resolved", "consolidated"):
@@ -83,7 +84,7 @@ def build():
         for src in staged:
             shutil.copy2(src, ext / src.name)
             installed += 1
-        for rp in sorted((STAGING / study).glob("*_uncertainty_report.md")):
+        for rp in sorted((STAGING / study).glob("*_extraction_log.md")) + sorted((STAGING / study).glob("*_uncertainty_report.md")):  # old name: B36
             shutil.copy2(rp, ext / rp.name)
 
         for cf in sorted(ext.glob("*_corrections.json")):

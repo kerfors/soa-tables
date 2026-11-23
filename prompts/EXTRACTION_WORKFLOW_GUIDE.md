@@ -26,7 +26,7 @@ Use `PDF_TO_JSON_PROMPT.md`. There are no staged confirmations.
 
 **Say:** "Please read and follow the attached prompt to extract the SoA tables from this protocol to JSON."
 
-The model runs start to finish and returns one extraction JSON per table plus an **uncertainty report** (calls a stated rule decides under *Recorded, not open*; open judgement calls in a *Decisions needed* block, also carried as `review_items` in the JSON), with exception-based method provenance recorded in the JSON for any value derived by a non-default method (prompt §1e). Decide the open calls on the review page (`{NCTID}_review.html`) through the corrections sidecar instead of confirming at mid-run gates. The **mechanical mark-check** — bbox column-binning for text-layer grids, a rule-line/near-black-pixel detector for image-only grids — is the verification surface that replaces the old Excel checkpoint: it re-derives the mark matrix from the PDF and flags merged single-marks on grid-heavy tables, the one error class post-hoc review must still catch. For a wide table split into side-by-side column-block tiles (e.g. V10–V19 and a V20–V29 "(continued)" spread), run the mark-check across *all* tiles and take the per-row union — a recurring row usually appears in every tile, so checking only one tile silently drops the others' visits (see `PDF_TO_JSON_PROMPT.md` §5).
+The model runs start to finish and returns one extraction JSON per table plus an **extraction log** (calls a stated rule decides under *Recorded, not open*; open judgement calls in a *Decisions needed* block, also carried as `review_items` in the JSON), with exception-based method provenance recorded in the JSON for any value derived by a non-default method (prompt §1e). Decide the open calls on the review page (`{NCTID}_review.html`) through the corrections sidecar instead of confirming at mid-run gates. The **mechanical mark-check** — bbox column-binning for text-layer grids, a rule-line/near-black-pixel detector for image-only grids — is the verification surface that replaces the old Excel checkpoint: it re-derives the mark matrix from the PDF and flags merged single-marks on grid-heavy tables, the one error class post-hoc review must still catch. For a wide table split into side-by-side column-block tiles (e.g. V10–V19 and a V20–V29 "(continued)" spread), run the mark-check across *all* tiles and take the per-row union — a recurring row usually appears in every tile, so checking only one tile silently drops the others' visits (see `PDF_TO_JSON_PROMPT.md` §5). Before prompt 3.9.5 the extraction log was named *uncertainty report*; older notes in the data still use that name.
 
 **Save as:** `{NCTID}_Table_{NN}_extraction.json` in the `extracted/` folder.
 
@@ -128,7 +128,7 @@ After the pipeline, `soa-tables-row-audit --collection <name>` compares every ex
 │   ├── {NCTID}_Table_{NN}_corrections.json           # sidecar (where needed)
 │   ├── {NCTID}_Table_{NN}_extraction.verified.json   # sidecar applied (where one exists)
 │   ├── {NCTID}_Table_{NN}_extraction_viewer.html     # JSON viewer
-│   ├── {NCTID}[_<name>]_uncertainty_report.md/.html  # one or more
+│   ├── {NCTID}[_<name>]_extraction_log.md/.html  # one or more
 │   └── {NCTID}_review.html
 ├── resolved/
 │   ├── {NCTID}_Table_{NN}_resolved.json

@@ -72,8 +72,8 @@ def build_scratch(studies):
             if n:
                 retired.append(f"{cf.name}: {n} correction(s) retired")
 
-        # carry the uncertainty report across so the resolved HTML links resolve
-        for rp in sorted((STAGING / study).glob("*_uncertainty_report.md")):
+        # carry the extraction log across so the resolved HTML links resolve (old name: B36)
+        for rp in sorted((STAGING / study).glob("*_extraction_log.md")) + sorted((STAGING / study).glob("*_uncertainty_report.md")):
             shutil.copy2(rp, ext / rp.name)
 
     print(f"  installed {len(installed)} staged table(s)")

@@ -1,4 +1,4 @@
-"""Verify documents/re-extraction-baseline-mined.json against the uncertainty reports it was mined from.
+"""Verify documents/re-extraction-baseline-mined.json against the extraction logs it was mined from.
 
 Checks, per study: the exact key set at top level and in every item; `table` is an int or "all";
 every `evidence_quote` is a verbatim substring of that study's report (after collapsing

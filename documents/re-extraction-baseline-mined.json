@@ -13,7 +13,7 @@
  "studies": [
   {
    "study": "CDISC_Pilot",
-   "report": "CDISC_Pilot_uncertainty_report.md",
+   "report": "CDISC_Pilot_extraction_log.md",
    "report_prompt_version": "3.7.2",
    "invariants": [
     {
@@ -198,7 +198,7 @@
   },
   {
    "study": "NCT01847274",
-   "report": "NCT01847274_uncertainty_report.md",
+   "report": "NCT01847274_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -413,7 +413,7 @@
   },
   {
    "study": "NCT02107703",
-   "report": "NCT02107703_uncertainty_report.md",
+   "report": "NCT02107703_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -628,7 +628,7 @@
   },
   {
    "study": "NCT02291289",
-   "report": "NCT02291289_uncertainty_report.md",
+   "report": "NCT02291289_extraction_log.md",
    "report_prompt_version": null,
    "invariants": [
     {
@@ -861,7 +861,7 @@
   },
   {
    "study": "NCT03283098",
-   "report": "NCT03283098_uncertainty_report.md",
+   "report": "NCT03283098_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -1052,7 +1052,7 @@
   },
   {
    "study": "NCT03402841",
-   "report": "NCT03402841_uncertainty_report.md",
+   "report": "NCT03402841_extraction_log.md",
    "report_prompt_version": null,
    "invariants": [
     {
@@ -1267,7 +1267,7 @@
   },
   {
    "study": "NCT03421379",
-   "report": "NCT03421379_uncertainty_report.md",
+   "report": "NCT03421379_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -1464,7 +1464,7 @@
   },
   {
    "study": "NCT03548935",
-   "report": "NCT03548935_uncertainty_report.md",
+   "report": "NCT03548935_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -1655,7 +1655,7 @@
   },
   {
    "study": "NCT03548987",
-   "report": "NCT03548987_uncertainty_report.md",
+   "report": "NCT03548987_extraction_log.md",
    "report_prompt_version": "3.7.2",
    "invariants": [
     {
@@ -1846,7 +1846,7 @@
   },
   {
    "study": "NCT03637764",
-   "report": "NCT03637764_uncertainty_report.md",
+   "report": "NCT03637764_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -2079,7 +2079,7 @@
   },
   {
    "study": "NCT03693430",
-   "report": "NCT03693430_uncertainty_report.md",
+   "report": "NCT03693430_extraction_log.md",
    "report_prompt_version": "3.7.2",
    "invariants": [
     {
@@ -2288,7 +2288,7 @@
   },
   {
    "study": "NCT03817853",
-   "report": "NCT03817853_uncertainty_report.md",
+   "report": "NCT03817853_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -2460,7 +2460,7 @@
   },
   {
    "study": "NCT04004988",
-   "report": "NCT04004988_uncertainty_report.md",
+   "report": "NCT04004988_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -2650,7 +2650,7 @@
   },
   {
    "study": "NCT04184622",
-   "report": "NCT04184622_uncertainty_report.md",
+   "report": "NCT04184622_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -2889,7 +2889,7 @@
   },
   {
    "study": "NCT04320615",
-   "report": "NCT04320615_uncertainty_report.md",
+   "report": "NCT04320615_extraction_log.md",
    "report_prompt_version": null,
    "invariants": [
     {
@@ -3104,7 +3104,7 @@
   },
   {
    "study": "NCT04557384",
-   "report": "NCT04557384_uncertainty_report.md",
+   "report": "NCT04557384_extraction_log.md",
    "report_prompt_version": "3.7.2",
    "invariants": [
     {
@@ -3313,7 +3313,7 @@
   },
   {
    "study": "NCT04573309",
-   "report": "NCT04573309_uncertainty_report.md",
+   "report": "NCT04573309_extraction_log.md",
    "report_prompt_version": null,
    "invariants": [
     {
@@ -3510,7 +3510,7 @@
   },
   {
    "study": "NCT04677179",
-   "report": "NCT04677179_uncertainty_report.md",
+   "report": "NCT04677179_extraction_log.md",
    "report_prompt_version": "3.7.2",
    "invariants": [
     {
@@ -3923,7 +3923,7 @@
   },
   {
    "study": "NCT04730349",
-   "report": "NCT04730349_uncertainty_report.md",
+   "report": "NCT04730349_extraction_log.md",
    "report_prompt_version": null,
    "invariants": [
     {
@@ -4168,7 +4168,7 @@
   },
   {
    "study": "NCT05176314",
-   "report": "NCT05176314_uncertainty_report.md",
+   "report": "NCT05176314_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -4383,7 +4383,7 @@
   },
   {
    "study": "NCT05259917",
-   "report": "NCT05259917_uncertainty_report.md",
+   "report": "NCT05259917_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {
@@ -4574,7 +4574,7 @@
   },
   {
    "study": "NCT05324124",
-   "report": "NCT05324124_uncertainty_report.md",
+   "report": "NCT05324124_extraction_log.md",
    "report_prompt_version": "3.7.3",
    "invariants": [
     {

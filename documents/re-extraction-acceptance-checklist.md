@@ -30,7 +30,7 @@ Anything that cannot be placed in a bucket blocks promotion of that table.
 ## 1. Scope
 
 22 studies, 43 tables. NCT03523273 is excluded — its posted protocol contains no SoA table
-(`excluded_reason` in the manifest). Every study, CDISC_Pilot included, has an uncertainty report.
+(`excluded_reason` in the manifest). Every study, CDISC_Pilot included, has an extraction log (then named uncertainty report).
 
 misc_studies (NCT01797120, NCT05051579) runs as the last batch with
 `SOA2USDM_COLLECTION=misc_studies`. It is not covered by the counts below: generate its own
@@ -404,7 +404,7 @@ Binding constraints for the Phase 2 fan-out, over and above the extraction promp
   `location_type: "unresolved"`. A guessed target is a defect that surfaces weeks later.
 - **Never repair the source.** Undefined footnotes, redactions and contradictions are data. §5.3
   lists the known ones; a fresh "resolution" of any of them is fabrication.
-- **Quote fidelity is mechanical.** Any quotation offered as evidence in the uncertainty report
+- **Quote fidelity is mechanical.** Any quotation offered as evidence in the extraction log
   must be a verbatim substring of the source. The sweep-1 mining pass produced 2 composed
   quotes out of 422 — plausible, well-formatted, and not in the document. Verify, do not
   trust.

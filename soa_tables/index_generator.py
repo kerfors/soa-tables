@@ -3,7 +3,7 @@ Index Generator
 
 Generates collection-level index.html with navigation to all protocol
 visualizations, source documents, and extraction artifacts. Also renders the
-extraction viewers and uncertainty reports to HTML, re-rendering any page whose
+extraction viewers and extraction logs to HTML, re-rendering any page whose
 navigation block would now differ (e.g. a sibling table or report added).
 
 Reads studies_protocols.xlsx for metadata (if available) and discovers
@@ -178,27 +178,31 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
         status = review_status(extracted_dir)
         result['review_items_total'] = status['total']
         result['review_items_open'] = status['open']
-        # Uncertainty report (per-protocol; .md preferred, .txt fallback).
-        # Markdown is rendered to HTML because GitHub Pages serves .md as plain
+        # Extraction log (per-protocol; .md preferred, .txt fallback; the new name before the
+        # old one, B36). Markdown is rendered to HTML because GitHub Pages serves .md as plain
         # text: the tables arrive as raw pipes and long lines do not wrap.
-        for ext in ('.md', '.txt'):
-            report = extracted_dir / f"{protocol_id}_uncertainty_report{ext}"
+        for base, ext in ((config.LOG_SUFFIX, '.md'), (config.OLD_LOG_SUFFIX, '.md'),
+                          (config.LOG_SUFFIX, '.txt'), (config.OLD_LOG_SUFFIX, '.txt')):
+            report = extracted_dir / f"{protocol_id}{base}{ext}"
             if not report.exists():
                 continue
             if ext == '.md':
-                report_html = report.with_suffix('.html')
+                report_html = extracted_dir / f"{protocol_id}{config.LOG_SUFFIX}.html"
                 _render_markdown_html(report, report_html, protocol_id, collection_path,
                                       collection, title="Extraction log", current="log")
                 result['report_file'] = str(report_html.relative_to(collection_path))
             else:
                 result['report_file'] = f"{protocol_id}/soa-tables/extracted/{report.name}"
             break
-        # Further reports of the same protocol, e.g. '<pid>_flowcharts_uncertainty_report.md' for
-        # tables added to an accepted study (item 20b).
+        # Further logs of the same protocol, e.g. '<pid>_flowcharts_extraction_log.md' for
+        # tables added to an accepted study (item 20b); the new name before the old one (B36).
         result['extra_reports'] = []
-        for report in sorted(extracted_dir.glob(f"{protocol_id}_*_uncertainty_report.md")):
-            infix = report.name[len(protocol_id) + 1:-len("_uncertainty_report.md")]
-            report_html = report.with_suffix('.html')
+        extra = {}
+        for base in (config.OLD_LOG_SUFFIX, config.LOG_SUFFIX):
+            for report in extracted_dir.glob(f"{protocol_id}_*{base}.md"):
+                extra[report.name[len(protocol_id) + 1:-len(f"{base}.md")]] = report
+        for infix, report in sorted(extra.items()):
+            report_html = extracted_dir / f"{protocol_id}_{infix}{config.LOG_SUFFIX}.html"
             _render_markdown_html(report, report_html, protocol_id, collection_path, collection,
                                   title=f"Extraction log ({infix})", current="log", current_n=infix)
             result['extra_reports'].append((infix, str(report_html.relative_to(collection_path))))
@@ -695,7 +699,7 @@ def generate_index_html(collection: str) -> str:
 
         # Review column: the review page, and the state of its open decisions
         # (an item is decided when a sidecar correction names it). Log column:
-        # the extractor's own account of the run (the uncertainty report).
+        # the extractor's own account of the run (the extraction log).
         review_html = ''
         if p.get('review_file'):
             review_html = f'<a href="{p["review_file"]}" class="link-review" title="Review page: the extraction against its source pages">review</a>'
@@ -837,7 +841,7 @@ def generate_index_html(collection: str) -> str:
             <thead><tr class="groups">
                 <th colspan="{id_cols}"></th><th class="grp" colspan="4" title="Layers 1 and 2 work table by table; the review checks each table against its source pages">Per table, against the source pages</th><th class="grp" colspan="2" title="Layer 3 unifies the tables of a protocol; its matches are reviewed in the consolidated view">Per protocol, across tables</th>
             </tr><tr>
-                <th>NCT ID</th><th>Sponsor</th><th>Study Code</th><th>Acronym</th><th>SoA pp</th><th>Source</th><th class="grp-start" title="Layer 1 — extraction JSON per table (viewer), with its table type">1. Extraction (JSON)</th><th title="Layer 2 — resolved JSON per table (viewer): IDs, hierarchy, relationships; table type after corrections">2. Resolution (JSON)</th><th title="Review the extraction against its source pages and take the open decisions">Extraction review</th><th title="The extractor's own account of the run (uncertainty report)">Log</th><th class="grp-start" title="Layer 3 — protocol-level unified SoA (HTML + JSON), and the review of its matches across tables">3. Consolidation (view + review, JSON)</th><th title="Unified activity rows whose name is redacted in the public protocol (CCI) — of total unified activities">Redacted</th>
+                <th>NCT ID</th><th>Sponsor</th><th>Study Code</th><th>Acronym</th><th>SoA pp</th><th>Source</th><th class="grp-start" title="Layer 1 — extraction JSON per table (viewer), with its table type">1. Extraction (JSON)</th><th title="Layer 2 — resolved JSON per table (viewer): IDs, hierarchy, relationships; table type after corrections">2. Resolution (JSON)</th><th title="Review the extraction against its source pages and take the open decisions">Extraction review</th><th title="The extractor's own account of the run (extraction log)">Log</th><th class="grp-start" title="Layer 3 — protocol-level unified SoA (HTML + JSON), and the review of its matches across tables">3. Consolidation (view + review, JSON)</th><th title="Unified activity rows whose name is redacted in the public protocol (CCI) — of total unified activities">Redacted</th>
             </tr></thead>
             <tbody>
                 {ready_rows}

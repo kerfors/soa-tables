@@ -2,7 +2,7 @@
 
 Machine facts only: everything here is computed from the collection by the same code the gate
 and the row audit use, so running it twice on the same corpus gives the same bytes. No timestamp
-is written; the commit that carries the file dates it. Interpretation of the uncertainty reports
+is written; the commit that carries the file dates it. Interpretation of the extraction logs
 (invariants, judgement calls, source defects) lives in a separate file, not here.
 
   per_table_metrics   gate.check_table metrics for every raw *_extraction.json — what gate.py diffs

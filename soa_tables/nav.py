@@ -12,7 +12,7 @@ links to the protocol's own row on the collection index (the rows carry
 id="{protocol_id}" anchors, highlighted via tr:target). The sibling strip
 is discovered from the protocol folder on disk, so a page never links to
 an artifact that does not exist; the current page is shown unlinked. Every
-uncertainty report of the protocol gets its own entry, the protocol's own first.
+extraction log of the protocol gets its own entry, the protocol's own first.
 
 Directory layout the relative paths rely on (see config):
 
@@ -75,7 +75,7 @@ def discover_siblings(protocol_id: str, collection: str) -> dict:
     consolidated / review:
     href or None; consolidated from the *_consolidated.json (the page is rendered
     from it by VisualizeStep), review from the page itself.
-    logs: [(infix, href)] one per uncertainty report (infix None
+    logs: [(infix, href)] one per extraction log (infix None
     for the protocol's own report), emitted when the report exists as .md or
     already-rendered .html (the .html is rendered with the index, same batch).
     """
@@ -97,15 +97,18 @@ def discover_siblings(protocol_id: str, collection: str) -> dict:
     cons = cons_dir / f"{protocol_id}_consolidated.html"
     cons_json = cons_dir / f"{protocol_id}_consolidated.json"
     review = ext_dir / f"{protocol_id}_review.html"
-    # Every uncertainty report of the protocol, its own first: a study can carry more than one
-    # (NCT03637764 since item 19: '<pid>_flowcharts_uncertainty_report'). Item 20b.
+    # Every extraction log of the protocol, its own first: a study can carry more than one
+    # (NCT03637764 since item 19: '<pid>_flowcharts_extraction_log'). Item 20b. A log still under
+    # its old name (B36) is rendered to the new .html name, so the link is always the new name.
     logs = []
     if ext_dir.is_dir():
-        stems = {f.name[:-len(sfx)] for sfx in ("_uncertainty_report.md", "_uncertainty_report.html")
+        stems = {f.name[:-len(sfx)]
+                 for base in (config.LOG_SUFFIX, config.OLD_LOG_SUFFIX)
+                 for sfx in (f"{base}.md", f"{base}.html")
                  for f in ext_dir.glob(f"{protocol_id}*{sfx}")}
         for stem in sorted(stems, key=lambda s: (s != protocol_id, s)):
             infix = stem[len(protocol_id) + 1:] or None
-            logs.append((infix, f"soa-tables/extracted/{stem}_uncertainty_report.html"))
+            logs.append((infix, f"soa-tables/extracted/{stem}{config.LOG_SUFFIX}.html"))
 
     return {
         "extraction": extraction,

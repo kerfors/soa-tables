@@ -1,7 +1,7 @@
 """
 review_items — open judgement calls as data (backlog item 6).
 
-An extraction may carry `review_items`, one per row of the uncertainty report's
+An extraction may carry `review_items`, one per row of the extraction log's
 Decisions-needed block. Resolution is DERIVED: an item is decided exactly when
 a corrections-sidecar entry names it in `review_item` (op `confirm` keeps the
 call; any other op is the alternative taken). Nothing records a decision in the

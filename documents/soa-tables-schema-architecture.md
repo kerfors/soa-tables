@@ -23,7 +23,7 @@ PDF Protocol Document
 │                                         │
 │  • Single-pass Claude run (PDF→JSON)    │
 │  • Mechanical mark-check (from PDF)     │
-│  • Uncertainty report → human review    │
+│  • Extraction log → human review        │
 │  • One file per table                   │
 └─────────────────────────────────────────┘
         │
@@ -80,7 +80,7 @@ PDF Protocol Document
 
 **Schema:** `soa-table-extraction` v1.1
 
-**Implementation:** A single non-interactive Claude pass (PDF→JSON, `PDF_TO_JSON_PROMPT.md`). The model transcribes the table, re-derives the mark matrix mechanically from the PDF (bbox column-binning on text-layer grids, rule-line detection on rasters), and ends with an uncertainty report whose open judgement calls are also carried as data (`review_items`) and decided on the review page.
+**Implementation:** A single non-interactive Claude pass (PDF→JSON, `PDF_TO_JSON_PROMPT.md`). The model transcribes the table, re-derives the mark matrix mechanically from the PDF (bbox column-binning on text-layer grids, rule-line detection on rasters), and ends with an extraction log whose open judgement calls are also carried as data (`review_items`) and decided on the review page.
 
 **Contains:**
 - Physical structure (rows, columns, positions)
@@ -194,7 +194,7 @@ Cross-table IDs (`xact-NNN`, `xcol-NNN`, `xannot-NNN`) link to per-table IDs (`a
 
 Two mechanical checks bracket the extraction, one inside the pass and one after the pipeline; the review page puts both in front of the reviewer:
 
-- **Mark-check (inside the extraction pass):** re-derives the mark matrix from PDF geometry — bbox column-binning where a text layer exists, rule-line detection on rasters — and diffs it cell-for-cell against the model's visual read. Disagreements go to the uncertainty report.
+- **Mark-check (inside the extraction pass):** re-derives the mark matrix from PDF geometry — bbox column-binning where a text layer exists, rule-line detection on rasters — and diffs it cell-for-cell against the model's visual read. Disagreements go to the extraction log.
 - **Row audit (after the pipeline):** `RowAuditStep` (`soa-tables-row-audit`) compares every extracted activity row against the rows the SoA pages actually print, and writes `row_audit.json` per collection.
 - **Review page (per protocol):** `ReviewPageStep` renders the source pages and draws the extraction on them — row bands, a cell-by-cell mark check, annotation markers where printed (activity, mark, header row, header cell), `review_items` as the reviewer's worklist with the corrections that decided them, consolidation's cross-table folds — so every schema-level fact can be checked against the printed page. The page writes nothing; a decision drafts a corrections-sidecar entry, keeping the sidecar the only write path.
 
@@ -211,7 +211,7 @@ Neither check trusts the model's read of the grid; both re-derive from the sourc
 │   ├── *_Table_{NN}_corrections.json         # Human corrections sidecar (where needed)
 │   ├── *_Table_{NN}_extraction.verified.json # Sidecar applied (where one exists)
 │   ├── *_Table_{NN}_extraction_viewer.html   # JSON viewer
-│   ├── {NCTID}[_<name>]_uncertainty_report.* # One or more extraction reports (.md, .html)
+│   ├── {NCTID}[_<name>]_extraction_log.*     # One or more extraction logs (.md, .html)
 │   └── {NCTID}_review.html                   # Review page
 ├── resolved/
 │   ├── *_Table_{NN}_resolved.json   # One per table
