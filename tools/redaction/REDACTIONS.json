@@ -1,6 +1,6 @@
 {
   "note": "Sweep 2 redaction log. Apply with apply_redactions.py after EVERY prompt/taxonomy edit. Must never enter the blind tree.",
-  "prompt_version": "3.9.4",
+  "prompt_version": "3.9.5",
   "taxonomy_version": "v8",
   "copied_unchanged": [
     "schemas/soa-table-extraction.schema.json"
@@ -140,6 +140,46 @@
       "find": "(\"See Appendix 2 for details. Day 1 predose sample is for baseline only.\")",
       "replace": "(\"See Appendix n for details. <one sentence of instruction>.\")",
       "why": "verbatim annotation of NCT04004988 T1"
+    },
+    {
+      "id": "P15a",
+      "tier": "B",
+      "file": "prompts/PDF_TO_JSON_PROMPT.md",
+      "find": "(a parenthesised label such as \"(Duration)\")",
+      "replace": "(a parenthesised label such as \"(<qualifier>)\")",
+      "why": "verbatim row label of NCT04304508 T1 (D1), a 3.9.5 acceptance case"
+    },
+    {
+      "id": "P15b",
+      "tier": "B",
+      "file": "prompts/PDF_TO_JSON_PROMPT.md",
+      "find": "(an \"Early termination\" cell over one visit)",
+      "replace": "(a cell naming one visit's sub-band)",
+      "why": "verbatim header cell of NCT04304508 T1 (D1), a 3.9.5 acceptance case"
+    },
+    {
+      "id": "P16",
+      "tier": "B",
+      "file": "prompts/PDF_TO_JSON_PROMPT.md",
+      "find": "(week 'W2' printed above day '15±4' → `W2\\n15±4`)",
+      "replace": "(a week printed above a day and window → `<week>\\n<day ± window>`)",
+      "why": "verbatim header values of NCT04304508 T1 (D2), a 3.9.5 acceptance case"
+    },
+    {
+      "id": "P17",
+      "tier": "B",
+      "file": "prompts/PDF_TO_JSON_PROMPT.md",
+      "find": "(\"Study Visit (Day)\" over the day numbers)",
+      "replace": "(\"<caption>\" over the values of the row)",
+      "why": "verbatim banner of NCT03283098 Tables 1a-1c, a 3.9.5 acceptance case"
+    },
+    {
+      "id": "P18",
+      "tier": "B",
+      "file": "prompts/PDF_TO_JSON_PROMPT.md",
+      "find": "(\"PK, PD and biomarker sampling\")",
+      "replace": "(\"<procedure>, <procedure> and <procedure>\")",
+      "why": "verbatim note text of NCT04304508 T2 (D4), a 3.9.5 acceptance case"
     },
     {
       "id": "T1",

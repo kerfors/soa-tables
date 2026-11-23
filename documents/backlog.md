@@ -43,7 +43,7 @@ decided `.verified.json` except the B4 line breaks (and, for NCT03739203 T2, the
 
 | # | Status | Change | Notes |
 |---|---|---|---|
-| B21 | done | Remove `extraction_metadata.verification.excel_file` / `excel_verified` and the "source/Excel" wording in `row_position` (inv 31b). | Removing fields is not additive: check the corpus for use first; schema version bump; `tools/build_explainer.py` after a schema change. Checked 2026-11-23: no file in the corpus or fixtures has a `verification` block; `verification` has no `additionalProperties: false`, so a file carrying the fields stays valid — minor bump to 1.3 (Release A policy: old files stay valid). Prompt 3.9.5 stamps 1.3. Schema descriptions: "uncertainty report" → "extraction log" (B20; description-only in the resolved and consolidated schemas, no bump). |
+| B21 | done 1284eef | Remove `extraction_metadata.verification.excel_file` / `excel_verified` and the "source/Excel" wording in `row_position` (inv 31b). | Removing fields is not additive: check the corpus for use first; schema version bump; `tools/build_explainer.py` after a schema change. Checked 2026-11-23: no file in the corpus or fixtures has a `verification` block; `verification` has no `additionalProperties: false`, so a file carrying the fields stays valid — minor bump to 1.3 (Release A policy: old files stay valid). Prompt 3.9.5 stamps 1.3. Schema descriptions: "uncertainty report" → "extraction log" (B20; description-only in the resolved and consolidated schemas, no bump). |
 
 ## C. Code — package and review page
 
