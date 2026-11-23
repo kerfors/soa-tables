@@ -330,6 +330,24 @@ def check_table(path, schema, base):
     return f, metrics
 
 
+# The extraction's own prose is not evidence: a quote found only there verifies nothing (3.9.6
+# acceptance: a composed quote repeated in review_items[].call_made passed the quote check).
+PROSE_KEYS = {"review_items", "extraction_metadata", "note", "notes", "property_comment", "table_purpose"}
+
+
+def transcribed_strings(obj, acc):
+    """Like json_strings, but leaves out the extractor's own prose (PROSE_KEYS)."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k not in PROSE_KEYS:
+                transcribed_strings(v, acc)
+    elif isinstance(obj, list):
+        for v in obj:
+            transcribed_strings(v, acc)
+    elif isinstance(obj, str):
+        acc.append(norm(obj))
+
+
 def json_strings(obj, acc):
     if isinstance(obj, dict):
         for v in obj.values():
@@ -453,7 +471,7 @@ def check_quotes(study):
                                     capture_output=True, text=True).stdout)]
     for p in sorted(d.glob("*_extraction.json")):
         acc = []
-        json_strings(json.loads(p.read_text()), acc)
+        transcribed_strings(json.loads(p.read_text()), acc)
         haystack.append(" ⏎ ".join(acc))
     hay = " ⏎ ".join(haystack)
     hay_tight = re.sub(r"\s+", "", hay)

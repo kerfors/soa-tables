@@ -367,7 +367,7 @@ INFO, not FAIL; a missing `model` still FAILs. Leave it unset on acceptance runs
 14. **Provenance** — `prompt_version` equals the repo prompt's, and `model` is stamped.
 - **Quote fidelity** — every quotation in the report is a verbatim substring of the PDF text or
   the extraction (parts around '…' checked separately; spans quoted from the prompt, taxonomy or
-  schema skipped; a literal `\n` read as whitespace). An unverified quote is FAIL (B19, 2026-11-23);
+  schema skipped; a literal `\n` read as whitespace; the extraction's own prose — `review_items`, comments, notes — is not evidence). An unverified quote is FAIL (B19, 2026-11-23);
   read each one before trusting the rate.
 
 `dryrun.py` (scratch collection):

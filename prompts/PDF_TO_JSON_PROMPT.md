@@ -1,6 +1,6 @@
 # SoA Table Extraction: PDF → JSON (single-pass, non-interactive)
 
-> Prompt version 3.9.6 | Schema: soa-table-extraction v1.3
+> Prompt version 3.9.7 | Schema: soa-table-extraction v1.3
 > Supersedes the two-conversation PDF→Excel (v2.8) + Excel→JSON (v2.4) flow for non-interactive runs.
 
 Extract the SoA table(s) from the attached protocol directly to `soa-table-extraction` JSON — one file per table. Run start to finish without stopping for confirmation. Surface every judgement call in the **extraction log** at the end instead of asking mid-run.
@@ -201,7 +201,7 @@ After writing the JSON, output a short report — plain text, not JSON — for h
 
 **Every row of the Decisions-needed block is ALSO emitted as data**: the `review_items` array of the extraction JSON of the table the call belongs to (one entry per row, same `id`, `severity` high when the call changes rows, marks or what a note governs / medium when it changes a type or a name / low for presentation, `location` with the document page and the row position(s) or marker, `call_made`, `alternative`, `report_section`). The block and the arrays must agree one-to-one — the gate checks it. A call that concerns more than one table goes in the first table's array. Do NOT record a resolution anywhere: the raw extraction is immutable, and an item becomes "decided" only when a later corrections-sidecar entry names its id.
 
-**Quotes from the source are verbatim.** Text in double quotes is copied as printed; leave out a part only with '…'. Never compose one quote from two printed notes or cells — quote each separately.
+**Quotes from the source are verbatim.** Text in double quotes is copied as printed; leave out a part only with '…'. A cell printed on several lines is quoted with its lines joined by a space, or by `\n` as in its JSON value — never with a separator that is not printed (' / '). Never compose one quote from two printed notes or cells — quote each separately.
 
 Then cover:
 
