@@ -107,6 +107,15 @@ def check_table(path, schema, base):
     if pua:
         f.append(("1c characters", "FAIL", f"private-use code point(s) in text fields: {', '.join(pua)}"))
 
+    # 1d — one element per row_position (B39). Activities and property rows share one numbering
+    # (documents/identity.md), so a position held by two activities, or by an activity and a property
+    # row, names two elements with one row id. Minting fails on it at RDF build; this finds it here.
+    held = Counter([a.get("row_position") for a in data.get("activities", [])]
+                   + [p.get("row_position") for p in data.get("schedule_properties", [])])
+    dup = sorted(r for r, n in held.items() if n > 1)
+    if dup:
+        f.append(("1d rows", "FAIL", f"row_position held by more than one activity/property row: {dup}"))
+
     # 14 — provenance (prompt v3.8.1+). Pre-v3.8.1 output carries neither field, so their joint
     # absence is CHECK, not FAIL. Once either field is present the table is v3.8.1+ output:
     # prompt_version must match the repo prompt, and model must have been stamped by
@@ -453,12 +462,16 @@ def check_quotes(study):
     # counted as verified. Before this, such a span showed as unverified (sweep 2: 2 false positives).
     # Markdown emphasis and code marks are stripped: a report quoting a rule sentence drops the
     # backticks around a term (3.9.1 acceptance: 1 false positive).
-    instr = norm(re.sub(r"[`*]", "", PROMPT.read_text() + " ⏎ " + TAXONOMY.read_text()))
+    # The schema is read too (3.9.5 acceptance: 1 false positive quoting a schema description).
+    instr = norm(re.sub(r"[`*]", "", PROMPT.read_text() + " ⏎ " + TAXONOMY.read_text() + " ⏎ " + SCHEMA.read_text()))
     instr_tight = re.sub(r"\s+", "", instr)
 
     out, n_ok, n_bad, n_skip = [], 0, 0, 0
     for rp in reports:
         for q in quoted_spans(rp.read_text()):
+            # A literal backslash-n is how a log writes a line break inside a quoted cell value (W2, backslash-n, 15±4);
+            # it stands for the whitespace the haystack already normalises (3.9.5 acceptance: 1 case).
+            q = q.replace("\\n", " ")
             if QUOTE_SKIP.search(q) or len(q.split()) < 4:
                 n_skip += 1
                 continue
@@ -472,7 +485,9 @@ def check_quotes(study):
                 n_skip += 1
             else:
                 n_bad += 1
-                out.append(("quotes", "CHECK", f"{rp.name}: not a verbatim substring — {q[:160]!r}"))
+                # FAIL since B19 (2026-11-23): a quote that is not a verbatim substring is composed or
+                # invented evidence; the prompt already requires verbatim quotes (§7).
+                out.append(("quotes", "FAIL", f"{rp.name}: not a verbatim substring — {q[:160]!r}"))
     out.insert(0, ("quotes", "INFO",
                    f"{n_ok} verbatim, {n_bad} unverified, {n_skip} skipped as non-evidence "
                    f"across {len(reports)} report file(s)"))

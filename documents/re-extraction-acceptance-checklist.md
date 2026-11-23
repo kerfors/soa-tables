@@ -343,6 +343,7 @@ INFO, not FAIL; a missing `model` still FAILs. Leave it unset on acceptance runs
 1. **Schema valid** against `soa-table-extraction.schema.json`, `schema_version` 1.0,
    `extraction_status` `ready_for_resolution`.
    **1c** — no private-use code point (U+E000–U+F8FF) in any text field (prompt §1c).
+   **1d** — no `row_position` held by two activities, or by an activity and a property row (B39).
 2. **No orphan annotations** — every annotation has ≥1 `marker_locations` entry.
 3. **Markers agree both ways** — every marker in an annotation's `marker_locations` also appears in
    that row's `annotation_markers` (§5.4; the `resolve.py` detector, not eyeballing).
@@ -365,8 +366,9 @@ INFO, not FAIL; a missing `model` still FAILs. Leave it unset on acceptance runs
     study's reports.
 14. **Provenance** — `prompt_version` equals the repo prompt's, and `model` is stamped.
 - **Quote fidelity** — every quotation in the report is a verbatim substring of the PDF text or
-  the extraction (parts around '…' checked separately; spans quoted from the prompt or taxonomy
-  skipped); read each unverified one before trusting the rate.
+  the extraction (parts around '…' checked separately; spans quoted from the prompt, taxonomy or
+  schema skipped; a literal `\n` read as whitespace). An unverified quote is FAIL (B19, 2026-11-23);
+  read each one before trusting the rate.
 
 `dryrun.py` (scratch collection):
 
