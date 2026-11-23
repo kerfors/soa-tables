@@ -48,7 +48,7 @@ number does not fit, or if two elements get the same local id.
 | Element | localId | From |
 |---|---|---|
 | Table | `t01` | table number |
-| Activity or property row | `t01-r026` | printed `row_position` (rows and property rows share one numbering) |
+| Activity or property row | `t01-r026` | printed `row_position` (rows and property rows share one numbering; header rows reprinted on a continued page are not counted, prompt §4) |
 | Column | `t01-c005` | printed `column_position` |
 | Cell | `t01-r026-c005` | row + column |
 | Annotation | `t01-n-{marker}` | printed marker |

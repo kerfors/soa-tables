@@ -1,6 +1,6 @@
 {
   "note": "Sweep 2 redaction log. Apply with apply_redactions.py after EVERY prompt/taxonomy edit. Must never enter the blind tree.",
-  "prompt_version": "3.9.5",
+  "prompt_version": "3.9.6",
   "taxonomy_version": "v8",
   "copied_unchanged": [
     "schemas/soa-table-extraction.schema.json"
@@ -172,14 +172,6 @@
       "find": "(\"Study Visit (Day)\" over the day numbers)",
       "replace": "(\"<caption>\" over the values of the row)",
       "why": "verbatim banner of NCT03283098 Tables 1a-1c, a 3.9.5 acceptance case"
-    },
-    {
-      "id": "P18",
-      "tier": "B",
-      "file": "prompts/PDF_TO_JSON_PROMPT.md",
-      "find": "(\"PK, PD and biomarker sampling\")",
-      "replace": "(\"<procedure>, <procedure> and <procedure>\")",
-      "why": "verbatim note text of NCT04304508 T2 (D4), a 3.9.5 acceptance case"
     },
     {
       "id": "T1",

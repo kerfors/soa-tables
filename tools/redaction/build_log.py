@@ -91,10 +91,6 @@ add("P17", "B", PROMPT,
     "(\"Study Visit (Day)\" over the day numbers)",
     "(\"<caption>\" over the values of the row)",
     "verbatim banner of NCT03283098 Tables 1a-1c, a 3.9.5 acceptance case")
-add("P18", "B", PROMPT,
-    "(\"PK, PD and biomarker sampling\")",
-    "(\"<procedure>, <procedure> and <procedure>\")",
-    "verbatim note text of NCT04304508 T2 (D4), a 3.9.5 acceptance case")
 add("T1", "A", TAX,
     "*Amgen protocol with Table 1a (Non-lab), Table 1b (Lab), Table 1c (PK) - all sharing 20 columns but grouping different assessment types.*",
     "*A protocol with separate Non-laboratory, Laboratory and PK tables - all sharing the same columns but grouping different assessment types.*",
@@ -118,7 +114,7 @@ add("T5", "B", TAX,
 
 log = {"note": "Sweep 2 redaction log. Apply with apply_redactions.py after EVERY prompt/taxonomy edit. "
                "Must never enter the blind tree.",
-       "prompt_version": "3.9.5", "taxonomy_version": "v8",
+       "prompt_version": "3.9.6", "taxonomy_version": "v8",
        "copied_unchanged": ["schemas/soa-table-extraction.schema.json"],
        "tier_c_kept": ["P = predose (§5)", "Fasting / Telephone-visit bands (§1b)", "Sample 1, Sample 2 (§2, taxonomy)",
                        "See instructions (§5)", "responders vs non-responders (prompt §2, taxonomy)"],
