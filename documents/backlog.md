@@ -29,7 +29,7 @@ check 14 then requires the new version on new runs only.
 | B17 | open | **Horizontal header spans repeat the value over the covered columns** (inv 27c; all 98 published spans do, item 23e) — one sentence. | — | §3. |
 | B18 | open | **Excel leftovers** (inv 31a): header line "Use the v2.x flow when a human-editable Excel checkpoint is wanted", attachments line "Read the XLSX skill only if…", §7 "review against the per-table resolved HTML" (the review page took its place). | Still in 3.9.4 (lines 4, 8, 190). | Header, attachments line, §7. |
 | B19 | open | **Verbatim quotes in the report, no composition** (inv 26f): the gate already checks the parts around '…'; composed quotes (two printed notes joined) are the remaining CHECKs. One §7 sentence. | NCT04677179 report. | §7. |
-| B20 | open | **Name of the extractor's report: "extraction log"** (inv 8; decided 2026-11-22). Today: file `{NCTID}_uncertainty_report.md`, page title "Extraction log", prompt §7 "uncertainty report", gate glob on the file name. Rename to `{NCTID}_extraction_log.md` / `.html` in one prompt version (file rename script, markdown content untouched; index accepting both names for one release). | The review page is where decisions are taken; this file is the extractor's account of the run (provenance). "Uncertainty report" named its old role as review surface. | Prompt §7, gate, index, workflow guide. |
+| B20 | done dc9197c, collections 35a4e84 (prompt wording with 3.9.5) | **Name of the extractor's report: "extraction log"** (inv 8; decided 2026-11-22). Today: file `{NCTID}_uncertainty_report.md`, page title "Extraction log", prompt §7 "uncertainty report", gate glob on the file name. Rename to `{NCTID}_extraction_log.md` / `.html` in one prompt version (file rename script, markdown content untouched; index accepting both names for one release). | The review page is where decisions are taken; this file is the extractor's account of the run (provenance). "Uncertainty report" named its old role as review surface. | Prompt §7, gate, index, workflow guide. |
 
 Candidates recorded but not proposed: the "new open calls outside every rule" of inv 22j / 25j / 26d (tile row
 numbering, category row numbering, '(Day Relative to C1D1)', visit-listing notes, two-row CCI box, note naming an
@@ -43,7 +43,7 @@ decided `.verified.json` except the B4 line breaks (and, for NCT03739203 T2, the
 
 | # | Status | Change | Notes |
 |---|---|---|---|
-| B21 | open | Remove `extraction_metadata.verification.excel_file` / `excel_verified` and the "source/Excel" wording in `row_position` (inv 31b). | Removing fields is not additive: check the corpus for use first; schema version bump; `tools/build_explainer.py` after a schema change. |
+| B21 | done | Remove `extraction_metadata.verification.excel_file` / `excel_verified` and the "source/Excel" wording in `row_position` (inv 31b). | Removing fields is not additive: check the corpus for use first; schema version bump; `tools/build_explainer.py` after a schema change. Checked 2026-11-23: no file in the corpus or fixtures has a `verification` block; `verification` has no `additionalProperties: false`, so a file carrying the fields stays valid — minor bump to 1.3 (Release A policy: old files stay valid). Prompt 3.9.5 stamps 1.3. Schema descriptions: "uncertainty report" → "extraction log" (B20; description-only in the resolved and consolidated schemas, no bump). |
 
 ## C. Code — package and review page
 

@@ -90,7 +90,7 @@
   "definitions": {
     "extraction_review_item": {
       "type": "object",
-      "description": "One open judgement call the extractor made that a reviewer could reasonably overturn. Mirrors one row of the uncertainty report's 'Decisions needed' block (prompt section 7). Resolution is NOT recorded here: an item counts as decided when a corrections-sidecar entry names its id in 'review_item', so the raw extraction stays immutable and the sidecar is the only write path.",
+      "description": "One open judgement call the extractor made that a reviewer could reasonably overturn. Mirrors one row of the extraction log's 'Decisions needed' block (prompt section 7). Resolution is NOT recorded here: an item counts as decided when a corrections-sidecar entry names its id in 'review_item', so the raw extraction stays immutable and the sidecar is the only write path.",
       "required": ["table_number", "id", "severity", "location", "call_made", "alternative", "report_section"],
       "additionalProperties": false,
       "properties": {
@@ -131,7 +131,7 @@
         },
         "report_section": {
           "type": "string",
-          "description": "Section of the uncertainty report holding the detail (e.g. '5.2')."
+          "description": "Section of the extraction log holding the detail (e.g. '5.2')."
         }
       }
     },

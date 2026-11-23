@@ -6,7 +6,7 @@
   "definitions": {
     "review_item": {
       "type": "object",
-      "description": "One open judgement call the extractor made that a reviewer could reasonably overturn. Mirrors one row of the uncertainty report's 'Decisions needed' block (prompt section 7). Resolution is NOT recorded here: an item counts as decided when a corrections-sidecar entry names its id in 'review_item', so the raw extraction stays immutable and the sidecar is the only write path.",
+      "description": "One open judgement call the extractor made that a reviewer could reasonably overturn. Mirrors one row of the extraction log's 'Decisions needed' block (prompt section 7). Resolution is NOT recorded here: an item counts as decided when a corrections-sidecar entry names its id in 'review_item', so the raw extraction stays immutable and the sidecar is the only write path.",
       "required": ["id", "severity", "location", "call_made", "alternative", "report_section"],
       "additionalProperties": false,
       "properties": {
@@ -43,7 +43,7 @@
         },
         "report_section": {
           "type": "string",
-          "description": "Section of the uncertainty report holding the detail (e.g. '5.2')."
+          "description": "Section of the extraction log holding the detail (e.g. '5.2')."
         }
       }
     },
@@ -126,7 +126,7 @@
         "row_position": {
           "type": "integer",
           "minimum": 1,
-          "description": "Physical row position in source/Excel (1-based). Preserves exact table structure."
+          "description": "Physical row position in the source table (1-based). Preserves exact table structure."
         },
         "property_name": {
           "type": "string",
@@ -578,14 +578,6 @@
           "type": "object",
           "description": "Verification checkpoint information",
           "properties": {
-            "excel_file": {
-              "type": "string",
-              "description": "Excel verification file if used"
-            },
-            "excel_verified": {
-              "type": "boolean",
-              "description": "Whether extraction was verified against Excel representation"
-            },
             "verified_by": {
               "type": "string",
               "description": "Person who performed verification"
@@ -626,8 +618,8 @@
     },
     "schema_version": {
       "type": "string",
-      "enum": ["1.0", "1.1", "1.2"],
-      "description": "Schema version. 1.1 adds property_type 'visit_attribute' and requires table_metadata.table_title. 1.2 adds annotation_type 'placeholder' with placeholder_reason, and review_note (set through corrections sidecars; a verified file keeps the raw file's stamp). Files stamped 1.0 or 1.1 remain valid. Major version changes indicate breaking changes; minor versions are backward compatible."
+      "enum": ["1.0", "1.1", "1.2", "1.3"],
+      "description": "Schema version. 1.1 adds property_type 'visit_attribute' and requires table_metadata.table_title. 1.2 adds annotation_type 'placeholder' with placeholder_reason, and review_note (set through corrections sidecars; a verified file keeps the raw file's stamp). 1.3 removes extraction_metadata.verification.excel_file and excel_verified (the Excel route is retired; no file used them; verification stays open, so a file carrying them is still valid). Files stamped 1.0 to 1.2 remain valid. Major version changes indicate breaking changes; minor versions are backward compatible."
     },
     "extraction_metadata": {
       "$ref": "#/definitions/extraction_metadata",
