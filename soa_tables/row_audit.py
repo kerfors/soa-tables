@@ -71,6 +71,7 @@ MARKER_CHARS = 4                # footnote-marker characters printed with a labe
 MIN_MARKED_CHARS = 6            # shortest label matched through marker characters
 MIN_CLIPPED_CHARS = 12          # shortest prefix accepted as a clipped label
 NOTE_BAND_CHARS = 150           # longer than any label in the corpus (max 117): a note block
+FRAME_TOL_PT = 2.0              # a band starting this close to the frame bottom is below it (B10)
 NOISE = re.compile(r"[^a-z0-9]")
 TRAILING_PARENTHETICAL = re.compile(r"\s*\([^)]*\)\s*$")
 
@@ -190,6 +191,7 @@ class PageRead:
     has_text: bool
     mark_columns: int = 0
     rotated: bool = False
+    frame_bottom: float | None = None   # page_grid's frame_bottom (B10)
 
     @property
     def is_schedule_page(self) -> bool:
@@ -235,7 +237,7 @@ def read_page(pdf_path: Path, page: int) -> PageRead:
                 >= MARK_COLUMN_RATE):
             marks += 1
     return PageRead(page=page, rows=rows, caption=caption, has_grid=True, has_text=True,
-                    mark_columns=marks, rotated=rotated)
+                    mark_columns=marks, rotated=rotated, frame_bottom=grid.frame_bottom)
 
 
 def caption_table(caption: str, titles: list[str]) -> int | None:
@@ -342,15 +344,18 @@ def audit_table(reads: dict[int, PageRead], pages: list[int], labels: list[str])
         # that went wrong. Reporting every label as missing would be noise.
         return {"pages": pages, "label_columns": [], "page_coverage": coverage,
                 "on_page_not_extracted": [], "extracted_not_on_page": [], "note_bands": [],
+                "below_frame": [],
                 "note": "no label column identified — transposed table, or wrong pages assigned"}
     seen: set[str] = set()
     unmatched: list[dict] = []
     notes: list[dict] = []
+    below: list[dict] = []
     coverage = []
     for page in pages:
         in_body = False
         matched_here = 0
         page_rows = reads[page].rows
+        bottom = reads[page].frame_bottom
         for row in page_rows:
             found = False
             for column in (c for c in columns if c < len(row.texts)):
@@ -373,8 +378,14 @@ def audit_table(reads: dict[int, PageRead], pages: list[int], labels: list[str])
                 record = {"page": page, "row": row.row, "y": row.y0,
                           "column": column, "text": text}
                 # A band longer than any label in the corpus is the table's
-                # footnote or instruction block, not a row.
-                (notes if len(normalise(text)) > NOTE_BAND_CHARS else unmatched).append(record)
+                # footnote or instruction block, not a row. A band under the table frame
+                # was closed by a line outside the table — footnote text, not a row (B10).
+                if len(normalise(text)) > NOTE_BAND_CHARS:
+                    notes.append(record)
+                elif bottom is not None and row.y0 >= bottom - FRAME_TOL_PT:
+                    below.append(record)
+                else:
+                    unmatched.append(record)
         coverage.append({"page": page, "bands": len(page_rows), "matched": matched_here})
     return {
         "pages": pages,
@@ -383,6 +394,7 @@ def audit_table(reads: dict[int, PageRead], pages: list[int], labels: list[str])
         "on_page_not_extracted": unmatched,
         "extracted_not_on_page": sorted(set(labels) - seen),
         "note_bands": notes,
+        "below_frame": below,
     }
 
 

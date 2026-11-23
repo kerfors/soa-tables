@@ -51,6 +51,7 @@ RULE_CLUSTER_TOL_PX = 3         # rules this close are the same rule
 SUPERSCRIPT_HEIGHT = 0.85       # a marker glyph is set smaller than its line
 SUPERSCRIPT_RISE = 0.15         # ... and raised above the line's baseline
 MIN_RULE_COLUMNS = 2            # column bands that must agree on a row rule
+FRAME_MIN_RUN_PT = 16           # a vertical-rule run this long is table frame, not a glyph (B10)
 
 XHTML = "{http://www.w3.org/1999/xhtml}"
 CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -96,6 +97,9 @@ class PageGrid:
     rows: list[tuple[float, float]]
     merged_cells: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)
     filled_cells: set[tuple[int, int]] = field(default_factory=set)
+    # Where the table's vertical rules end (frame_bottom below). Row bands under it are
+    # closed by lines outside the table (a footnote underline, the page-footer rule).
+    frame_bottom: float | None = None
 
     def cell(self, row: int, column: int) -> tuple[float, float, float, float]:
         """(x0, y0, x1, y1) of one cell, widened over the rows it merges."""
@@ -273,6 +277,25 @@ def consensus_rules(per_column: list[list[tuple[int, int]]],
     return kept
 
 
+def frame_bottom(ink, rules: list[tuple[int, int]], dpi: int = RENDER_DPI) -> int | None:
+    """Lowest pixel row reached by a vertical-rule run of at least FRAME_MIN_RUN_PT, or None.
+
+    The last such run, not the longest: a full-width redaction bar breaks every rule, and the
+    rows under it are still in the table. FRAME_MIN_RUN_PT is above a text line's height, so a
+    footnote glyph at a rule's x position does not extend the frame (B10: 16-24 pt measured
+    stable over the corpus).
+    """
+    minimum = int(FRAME_MIN_RUN_PT * dpi / 72)
+    bottom = None
+    for x0, x1 in rules:
+        run = 0
+        for y, ink_here in enumerate(ink[:, x0:x1 + 1].any(axis=1)):
+            run = run + 1 if ink_here else 0
+            if run >= minimum:
+                bottom = y if bottom is None else max(bottom, y)
+    return bottom
+
+
 def row_bands(rule_positions: list[int]) -> list[tuple[int, int]]:
     """The gaps between consecutive row rules."""
     return [(a, b) for a, b in zip(rule_positions, rule_positions[1:])
@@ -288,7 +311,8 @@ def page_grid(pdf_path: Path, page: int, dpi: int = RENDER_DPI) -> PageGrid:
     ink = render_page(pdf_path, page, dpi) < INK_MAX_GREY
     height_px, width_px = ink.shape
     scale = dpi / 72.0
-    columns_px = column_bands(vertical_rules(ink, dpi))
+    vrules = vertical_rules(ink, dpi)
+    columns_px = column_bands(vrules)
     per_column, fills = [], []
     for x0, x1 in columns_px:
         rules, filled = column_row_rules(ink, x0, x1)
@@ -302,6 +326,8 @@ def page_grid(pdf_path: Path, page: int, dpi: int = RENDER_DPI) -> PageGrid:
         columns=[(x0 / scale, x1 / scale) for x0, x1 in columns_px],
         rows=[(y0 / scale, y1 / scale) for y0, y1 in bands_px],
     )
+    bottom = frame_bottom(ink, vrules, dpi)
+    grid.frame_bottom = None if bottom is None else bottom / scale
     _mark_merges(grid, bands_px, rules, fills)
     _mark_fills(grid, bands_px, fills)
     return grid

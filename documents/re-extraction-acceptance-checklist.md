@@ -135,6 +135,11 @@ Tables 02/03.
 **Current figure (2026-09-28, 45 tables): 12** — 9 after sweep 2, plus 3 audit false positives on
 the NCT03637764 flow-chart pages (inventory item 20e).
 
+**After B10 (2026-11-23): 7.** The row audit now files a short unmatched band that starts below
+the table frame (where the vertical rules end) as `below_frame`, not on-page-not-extracted: the
+NCT03283098 T1–T3 footnote fragments (3) and NCT03637764 T2's footnote a (2 of the 3 item-20e false
+positives) are no longer counted.
+
 **Why the earlier figure was 33 over 45 tables.** 33 was measured on the pre-sweep-1 corpus
 (prompt v3.0.2–v3.1.0), which had 45 tables: sweep 1 merged CDISC_Pilot T2 and NCT04004988 T2 into
 their T1s (45 → 43) and took the audit from 33 to 10. The pre-sweep-1 baseline file was never
