@@ -745,10 +745,15 @@ document.querySelectorAll('#sidetabs button').forEach(b=>b.onclick=()=>switchTab
 function buildDecisions(){
  const t=T(), el=document.getElementById('tab-dec');
  const items=t.review_items;
- document.getElementById('ndec').textContent = D.review_status.open;
+ const openIn = x => x.review_items.filter(d=>!D.decided[d.id]).length;
+ const others = D.tables.filter(x=>x!==t && x.review_items.length);
+ const nOther = others.reduce((n,x)=>n+openIn(x),0);
+ document.getElementById('ndec').textContent = openIn(t) + (nOther?` +${nOther}`:'');
+ document.querySelector('#sidetabs button[data-t="dec"]').title = `${openIn(t)} open on this table, ${nOther} open on other tables`;
  let h='';
  if(!items.length && !t.applied.length) h+=`<p class="small">This table carries no review items${D.review_status.total?'':' — the extraction predates the field (prompt v3.8.0), so its open calls, if any, are only in the extraction log'}.</p>`;
  else h+='<p class="small">Calls the extractor made that could reasonably go the other way. Click one to see it on the page (call in purple, alternative rows in blue where the call names them). Choosing drafts a sidecar entry below; nothing is saved from here.</p>';
+ if(others.length) h+=`<p class="small"><b>On other tables:</b> ${others.map(x=>`Table ${x.number} — ${x.review_items.map(d=>`<a href="#" class="otherdec" data-t="${x.number}" data-id="${d.id}">${d.id}</a>${D.decided[d.id]?' (decided)':''}`).join(', ')}`).join('; ')}</p>`;
  items.forEach(d=>{
   const done=D.decided[d.id];
   const where=[`document page ${d.location.page}`, d.location.row_position?`row ${d.location.row_position}`:'', d.location.row_positions?`rows ${d.location.row_positions.join(', ')}`:'', d.location.annotation_marker?`note ${d.location.annotation_marker}`:''].filter(Boolean).join(' · ');
@@ -760,6 +765,7 @@ function buildDecisions(){
  h+=`<h3 style="font-size:13px;margin:14px 0 4px">Draft for <code>${esc(t.sidecar||'the corrections sidecar')}</code></h3><input id="reviewer" placeholder="your name, as it should appear in the sidecar" value="${esc(S.reviewer||'')}"><textarea id="draft" readonly placeholder="Choose 'keep the call' or 'take the alternative' above to draft sidecar entries here. 'Keep' drafts a complete confirm entry; 'alternative' drafts the entry skeleton with the review item and its location filled in."></textarea>`;
  el.innerHTML=h;
  el.querySelectorAll('.dec[data-id]').forEach(c=>c.onclick=e=>{ if(e.target.tagName==='BUTTON') return; showDecision(c.dataset.id); });
+ el.querySelectorAll('a.otherdec').forEach(a=>a.onclick=e=>{ e.preventDefault(); showTable(tableIndex(+a.dataset.t)); showDecision(a.dataset.id); });
  el.querySelectorAll('.btns button').forEach(b=>b.onclick=()=>{ S.choice[b.dataset.id]=b.dataset.c; el.querySelectorAll(`.btns button[data-id="${b.dataset.id}"]`).forEach(x=>x.classList.toggle('on',x===b)); showDecision(b.dataset.id); renderDraft(); });
  document.getElementById('reviewer').oninput=e=>{ S.reviewer=e.target.value; renderDraft(); };
  renderDraft();
