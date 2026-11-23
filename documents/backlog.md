@@ -65,12 +65,13 @@ decided `.verified.json` except the B4 line breaks; gate 0 FAIL. Existing corpus
 |---|---|---|---|---|
 | B6 | done 23f1268 | `tools/dryrun.py` | Create `<pid>/soa-tables/extracted/` when missing (brand-new protocol). | Failed with FileNotFoundError at `build_scratch`; worked around with an empty folder. |
 | B26 | done 23f1268 | `tools/dryrun.py` | Take only staged studies that have a protocol folder in `SOA_TABLES_COLLECTION`; print the skipped (inv 12, same filter as `promote_dryrun.py`). | Still takes every folder in STAGING (line 135). Do with B6. |
-| B7 | open | `notebooks/00_download_extract.ipynb` | `extract_soa` accepts the comma-separated ranges (`16-18,85-87`); reuse `page_map.parse_soa_pages`. | Notebooks are run by hand; cell change only. |
+| B7 | done | `notebooks/00_download_extract.ipynb` | `extract_soa` accepts the comma-separated ranges (`16-18,85-87`); reuse `page_map.parse_soa_pages`. | Notebooks are run by hand; cell change only. |
 | B8 | done a77f8c5 | `tools/page_map.py` | Report line prints the declared ranges, not first–last ("declared 16-87"). | Cosmetic; stdout only. |
 | B27 | done d18755e | `tools/gate.py` | Check 14 on a mixed-version corpus (inv 21c): an accepted-versions list or an env override, so calibration on published tables does not FAIL 14 on every table. | Matters for calibration and acceptance runs. |
 | B28 | open | `tools/promote_dryrun.py` | Hard-codes the sweep-1 promotion (`RETIRE` / `KEEP`, "Phase 3" docstring) — take the lists from arguments or a small JSON per run (inv 27b). | Small to medium. |
 | B29 | open | `tools/gate.py` / new check | Page-break defects (inv 17): (a) a mark-free row at a page top whose label continues the last row of the previous page; (b) reprinted header values that disagree across pages. | Small to medium. |
 | B31 | done 9c02057 | `pyproject.toml` | Add `jsonschema` to the `test` extra: four test modules (and `tools/gate.py`) import it, so a fresh `pip install .[test]` fails at collection. | Found setting up a fresh venv on 534d793. |
+| B35 | open | `notebooks/00_download_extract.ipynb` | **`extract_soa` cuts `soa_pages` as physical positions; the manifest holds document pages** (`page_map.read_manifest`: first/last doc page). Same numbers in cell_gene_therapy, cpmp and misc_studies; in 14 usdm_data protocols the physical page is the document page +1 or +2 (e.g. NCT04004988 document 10–11 = physical 11–12), where the notebook would cut the wrong pages. | Found with B7 (2026-11-23). The existing usdm_data excerpts are right (`page_map --physical` matched them), so they were not cut this way from these numbers. Matters for a future collection whose PDFs have unnumbered front matter. Options: a document→physical offset (column or lookup) before cutting, or a check after cutting that the excerpt's first page carries the declared document page number. |
 
 ## E. Ops and routine
 
