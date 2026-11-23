@@ -329,7 +329,9 @@ Run in order — later checks assume earlier ones held.
 Checks 13 and 14 report CHECK on output that predates `review_items` and the provenance fields;
 **on v3.8.1+ output, either one at CHECK counts as a failure**. Check 14 FAILs when
 `prompt_version` differs from the repo prompt — true of every published (3.8.1) table since
-prompt 3.9.0 (inventory item 21c).
+prompt 3.9.0 (inventory item 21c). For calibration on the published corpus, set
+`SOA_TABLES_ACCEPTED_PROMPTS` (comma-separated, e.g. `3.8.1,3.9.4`): a listed version is reported
+INFO, not FAIL; a missing `model` still FAILs. Leave it unset on acceptance runs (B27).
 
 `gate.py` (per staged study):
 

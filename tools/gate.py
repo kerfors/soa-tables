@@ -31,6 +31,8 @@ import jsonschema
 #   SOA_TABLES_CALIB        a copy of the ACCEPTED corpus, for calibrating checks
 #   SOA_TABLES_SCRATCH      throwaway collection for rehearsals
 #   SOA_TABLES_BASELINE     per-table baseline JSON (default documents/re-extraction-baseline.json)
+#   SOA_TABLES_ACCEPTED_PROMPTS  comma-separated prompt versions check 14 also accepts (INFO, not FAIL),
+#                           for calibration on the published corpus (B27). Unset: repo prompt only.
 REPO = Path(os.environ.get("SOA_TABLES_REPO", Path(__file__).resolve().parents[1]))
 STAGING = Path(os.environ.get("SOA_TABLES_STAGING", "staging"))
 BLIND = Path(os.environ.get("SOA_TABLES_BLIND", "blind"))
@@ -42,6 +44,10 @@ _pv = re.search(r"Prompt version (\d+\.\d+\.\d+)", PROMPT.read_text())
 if not _pv:
     sys.exit(f"cannot read the prompt version from {PROMPT}")
 PROMPT_VERSION = _pv.group(1)
+ACCEPTED_PROMPTS = [v.strip() for v in os.environ.get("SOA_TABLES_ACCEPTED_PROMPTS", "").split(",") if v.strip()]
+_bad = [v for v in ACCEPTED_PROMPTS if not re.fullmatch(r"\d+\.\d+\.\d+", v)]
+if _bad:
+    sys.exit(f"SOA_TABLES_ACCEPTED_PROMPTS: not a prompt version (x.y.z): {_bad}")
 
 sys.path.insert(0, str(REPO))
 from soa_tables.resolve import find_partial_marker_bindings
@@ -105,13 +111,16 @@ def check_table(path, schema, base):
     # absence is CHECK, not FAIL. Once either field is present the table is v3.8.1+ output:
     # prompt_version must match the repo prompt, and model must have been stamped by
     # tools/stamp_model.py. The published corpus is 3.8.1 output, so against a later repo prompt
-    # this FAILs on every published table (inventory item 21c).
+    # this FAILs on every published table (inventory item 21c) — unless the version is listed in
+    # SOA_TABLES_ACCEPTED_PROMPTS, which reports it as INFO (B27). A missing model still FAILs.
     em = data.get("extraction_metadata", {})
     pv, mdl = em.get("prompt_version"), em.get("model")
     if pv is None and mdl is None:
         f.append(("14 provenance", "CHECK", "no model / prompt_version (pre-v3.8.1 output?)"))
     else:
-        if pv != PROMPT_VERSION:
+        if pv != PROMPT_VERSION and pv in ACCEPTED_PROMPTS:
+            f.append(("14 provenance", "INFO", f"prompt_version={pv!r} accepted by SOA_TABLES_ACCEPTED_PROMPTS"))
+        elif pv != PROMPT_VERSION:
             f.append(("14 provenance", "FAIL", f"prompt_version={pv!r}, repo prompt is {PROMPT_VERSION}"))
         if not mdl:
             f.append(("14 provenance", "FAIL", "model not stamped — run tools/stamp_model.py"))
