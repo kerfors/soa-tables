@@ -78,6 +78,17 @@ a test suite run in one environment vouch for a rebuild done in another.
   disagreement, so when both sides are empty nothing is partial. `gate.py` check 12 compares the
   count of distinct markers carried on rows against the baseline.
 
+## New protocols (no baseline)
+
+The method above is for re-extracting studies that already have an accepted extraction. A protocol new
+to the corpus has no baseline, so there is nothing to hide from the extractor and no delta to judge:
+no blind tree, no redacted prompt. Used for cell_gene_therapy (2026-11-01) and the three misc_studies
+additions (2026-11-22): one general-purpose agent per protocol, given the `_soa.pdf`, the SoA pages as
+markdown, `PAGEMAP.md` (from `page_map.py`), and the prompt, schema and taxonomy as they are in the repo;
+then `stamp_model.py`, `gate.py` and `dryrun.py` (a brand-new protocol's `extracted/` folder is created,
+B6), an independent mark check against the pages, and the review page. Review decisions go into
+corrections sidecars as for any protocol.
+
 ## Other tools in this directory
 
 Not part of the re-extraction harness.
