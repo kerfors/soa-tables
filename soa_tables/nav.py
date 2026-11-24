@@ -98,13 +98,11 @@ def discover_siblings(protocol_id: str, collection: str) -> dict:
     cons_json = cons_dir / f"{protocol_id}_consolidated.json"
     review = ext_dir / f"{protocol_id}_review.html"
     # Every extraction log of the protocol, its own first: a study can carry more than one
-    # (NCT03637764 since item 19: '<pid>_flowcharts_extraction_log'). Item 20b. A log still under
-    # its old name (B36) is rendered to the new .html name, so the link is always the new name.
+    # (NCT03637764 since item 19: '<pid>_flowcharts_extraction_log'). Item 20b.
     logs = []
     if ext_dir.is_dir():
         stems = {f.name[:-len(sfx)]
-                 for base in (config.LOG_SUFFIX, config.OLD_LOG_SUFFIX)
-                 for sfx in (f"{base}.md", f"{base}.html")
+                 for sfx in (f"{config.LOG_SUFFIX}.md", f"{config.LOG_SUFFIX}.html")
                  for f in ext_dir.glob(f"{protocol_id}*{sfx}")}
         for stem in sorted(stems, key=lambda s: (s != protocol_id, s)):
             infix = stem[len(protocol_id) + 1:] or None

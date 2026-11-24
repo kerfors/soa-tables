@@ -178,12 +178,10 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
         status = review_status(extracted_dir)
         result['review_items_total'] = status['total']
         result['review_items_open'] = status['open']
-        # Extraction log (per-protocol; .md preferred, .txt fallback; the new name before the
-        # old one, B36). Markdown is rendered to HTML because GitHub Pages serves .md as plain
+        # Extraction log (per-protocol; .md preferred, .txt fallback). Markdown is rendered to HTML because GitHub Pages serves .md as plain
         # text: the tables arrive as raw pipes and long lines do not wrap.
-        for base, ext in ((config.LOG_SUFFIX, '.md'), (config.OLD_LOG_SUFFIX, '.md'),
-                          (config.LOG_SUFFIX, '.txt'), (config.OLD_LOG_SUFFIX, '.txt')):
-            report = extracted_dir / f"{protocol_id}{base}{ext}"
+        for ext in ('.md', '.txt'):
+            report = extracted_dir / f"{protocol_id}{config.LOG_SUFFIX}{ext}"
             if not report.exists():
                 continue
             if ext == '.md':
@@ -195,12 +193,11 @@ def discover_protocol_outputs(protocol_id: str, collection: str) -> dict:
                 result['report_file'] = f"{protocol_id}/soa-tables/extracted/{report.name}"
             break
         # Further logs of the same protocol, e.g. '<pid>_flowcharts_extraction_log.md' for
-        # tables added to an accepted study (item 20b); the new name before the old one (B36).
+        # tables added to an accepted study (item 20b).
         result['extra_reports'] = []
         extra = {}
-        for base in (config.OLD_LOG_SUFFIX, config.LOG_SUFFIX):
-            for report in extracted_dir.glob(f"{protocol_id}_*{base}.md"):
-                extra[report.name[len(protocol_id) + 1:-len(f"{base}.md")]] = report
+        for report in extracted_dir.glob(f"{protocol_id}_*{config.LOG_SUFFIX}.md"):
+            extra[report.name[len(protocol_id) + 1:-len(f"{config.LOG_SUFFIX}.md")]] = report
         for infix, report in sorted(extra.items()):
             report_html = extracted_dir / f"{protocol_id}_{infix}{config.LOG_SUFFIX}.html"
             _render_markdown_html(report, report_html, protocol_id, collection_path, collection,

@@ -55,9 +55,8 @@ CORRECTIONS_SCHEMA = SCHEMAS_DIR / "soa-table-corrections.schema.json"
 SYMBOL_FONT = str.maketrans({"\uf0b7": "•", "\uf061": "α", "\uf067": "γ"})
 
 # The extractor's report of a run: '<pid>[_<name>]_extraction_log.md', rendered to .html (B20).
-# OLD_LOG_SUFFIX is the name before prompt 3.9.5, still read for one release (B36: remove).
+# The name before prompt 3.9.5, '_uncertainty_report', is no longer read (B36).
 LOG_SUFFIX = "_extraction_log"
-OLD_LOG_SUFFIX = "_uncertainty_report"
 
 
 # =============================================================================

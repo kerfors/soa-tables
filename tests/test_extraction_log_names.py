@@ -1,6 +1,5 @@
-"""B20: the extractor's report is '<pid>[_<name>]_extraction_log.md'. For one release the old name
-'_uncertainty_report.md' is still read (B36); either way the page is rendered to, and linked as,
-'_extraction_log.html', and the new name wins where both exist."""
+"""B20: the extractor's report is '<pid>[_<name>]_extraction_log.md', rendered to, and linked as,
+'_extraction_log.html'. The old name '_uncertainty_report.md' is no longer read (B36)."""
 
 import pytest
 
@@ -25,24 +24,17 @@ def test_new_name_rendered_and_linked(extracted):
     assert discover_siblings("P1", "tmpc")["logs"] == [(None, "soa-tables/extracted/P1_extraction_log.html")]
 
 
-def test_old_name_rendered_under_new_name(extracted):
+def test_old_name_not_read(extracted):
     (extracted / "P1_uncertainty_report.md").write_text("# old\n")
     out = discover_protocol_outputs("P1", "tmpc")
-    assert out["report_file"] == "P1/soa-tables/extracted/P1_extraction_log.html"
-    assert not (extracted / "P1_uncertainty_report.html").exists()
-    assert discover_siblings("P1", "tmpc")["logs"] == [(None, "soa-tables/extracted/P1_extraction_log.html")]
+    assert out["report_file"] is None
+    assert not (extracted / "P1_extraction_log.html").exists()
+    assert discover_siblings("P1", "tmpc")["logs"] == []
 
 
-def test_new_name_wins_over_old(extracted):
-    (extracted / "P1_uncertainty_report.md").write_text("# old\n")
-    (extracted / "P1_extraction_log.md").write_text("# new\n")
-    discover_protocol_outputs("P1", "tmpc")
-    assert "new" in (extracted / "P1_extraction_log.html").read_text()
-
-
-def test_further_logs_both_names(extracted):
+def test_further_logs(extracted):
     (extracted / "P1_extraction_log.md").write_text("# own\n")
-    (extracted / "P1_flowcharts_uncertainty_report.md").write_text("# old extra\n")
+    (extracted / "P1_flowcharts_extraction_log.md").write_text("# extra\n")
     (extracted / "P1_second_extraction_log.md").write_text("# new extra\n")
     out = discover_protocol_outputs("P1", "tmpc")
     assert out["extra_reports"] == [

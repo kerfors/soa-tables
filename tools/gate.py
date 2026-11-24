@@ -418,7 +418,7 @@ def check_review_items(study):
     not FAIL, so older studies can still pass the gate; a present-but-mismatching set FAILS.
     """
     d = STAGING / study
-    reports = sorted(d.glob("*_extraction_log.md")) + sorted(d.glob("*_uncertainty_report.md"))  # old name: B36
+    reports = sorted(d.glob("*_extraction_log.md"))
     if not reports:
         return [("13 review", "WARN", "no report found")]
     # A study can carry more than one report (NCT03637764 since item 19: the protocol report and the
@@ -461,8 +461,7 @@ def check_review_items(study):
 def check_quotes(study):
     """Every quotation in the extraction log must be a verbatim substring of the source."""
     d = STAGING / study
-    reports = (sorted(d.glob("*_extraction_log.md")) + sorted(d.glob("*_uncertainty_report.md"))  # old name: B36
-               + sorted(d.glob("*_notes.md")))
+    reports = sorted(d.glob("*_extraction_log.md")) + sorted(d.glob("*_notes.md"))
     if not reports:
         return [("quotes", "WARN", "no report found")]
 

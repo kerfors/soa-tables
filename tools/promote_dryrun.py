@@ -70,8 +70,7 @@ def build():
             continue
 
         for p in list(ext.glob("*_extraction.json")) + list(ext.glob("*_extraction.verified.json")) \
-                + list(ext.glob("*_extraction_viewer.html")) + list(ext.glob("*_extraction_log.md")) \
-                + list(ext.glob("*_uncertainty_report.md")):  # old name: B36
+                + list(ext.glob("*_extraction_viewer.html")) + list(ext.glob("*_extraction_log.md")):
             p.unlink()
             removed += 1
         for sub in ("resolved", "consolidated"):
@@ -84,7 +83,7 @@ def build():
         for src in staged:
             shutil.copy2(src, ext / src.name)
             installed += 1
-        for rp in sorted((STAGING / study).glob("*_extraction_log.md")) + sorted((STAGING / study).glob("*_uncertainty_report.md")):  # old name: B36
+        for rp in sorted((STAGING / study).glob("*_extraction_log.md")):
             shutil.copy2(rp, ext / rp.name)
 
         for cf in sorted(ext.glob("*_corrections.json")):
