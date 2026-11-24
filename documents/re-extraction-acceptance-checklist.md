@@ -351,6 +351,8 @@ INFO, not FAIL; a missing `model` still FAILs. Leave it unset on acceptance runs
    FAIL: one source-faithful pair exists; verify against the page.
 5. **Typing not degenerate** — `by_type` across >20 annotations is not all `source_note`.
    **5a** — a bare cross-reference typed as a footnote is flagged (§6 types these `source_note`).
+   **5b** — a pointer in every activity cell of a column, or every data column of a row, is flagged
+   (§5 makes it a `source_note` with no schedule entries; B46 d). CHECK.
 6. **Page coverage** — every page in `page_start..page_end` contributed activity rows, or the
    report says why not.
 7. **Counts vs §2** — the delta table `gate.py` prints for every staged table; every delta

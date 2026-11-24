@@ -213,6 +213,38 @@ def check_table(path, schema, base):
                       f"{a.get('annotation_marker')!r} is a bare cross-reference typed "
                       f"{a.get('annotation_type')!r} — §6 types these source_note: {t!r}"))
 
+    # 5b — a pointer printed over a whole column or a whole row (B46 d). §5 'A pointer down whole
+    # columns' and 'A cross-reference over the whole schedule' make such a cell a source_note with
+    # no activity_schedule entries; this fires when every activity cell of a column (every data
+    # column of a row) holds the same text and that text is a pointer. Repeated schedule text
+    # ("Ongoing", "As clinically indicated", an arrow) is content, not a pointer, and does not fire.
+    # Section headers are not activity rows; a column or row of fewer than 3 cells is left alone.
+    act_rows = [a.get("row_position") for a in data.get("activities", []) if not a.get("is_section_header")]
+    data_cols = sorted({g.get("column_position") for g in data.get("schedule_grid", [])}
+                       | {e.get("column_position") for e in data.get("activity_schedule", [])})
+    cell = {(e.get("row_position"), e.get("column_position")): norm(e.get("cell_value"))
+            for e in data.get("activity_schedule", [])}
+
+    def uniform_pointer(keys):
+        values = {cell.get(k) for k in keys}
+        if len(keys) < 3 or len(values) != 1:
+            return None
+        value = values.pop()
+        return value if value and POINTER_LEAD.match(value) else None
+
+    for c in data_cols:
+        v = uniform_pointer([(r, c) for r in act_rows])
+        if v:
+            f.append(("5b pointer span", "CHECK",
+                      f"column {c}: every activity cell holds the pointer {v[:90]!r} — §5 'A pointer down "
+                      f"whole columns' makes it a source_note with no schedule entries"))
+    for r in act_rows:
+        v = uniform_pointer([(r, c) for c in data_cols])
+        if v:
+            f.append(("5b pointer span", "CHECK",
+                      f"row {r}: every data column holds the pointer {v[:90]!r} — §5 'A cross-reference "
+                      f"over the whole schedule' makes it a source_note with no schedule entries"))
+
     # 5 — typing not degenerate
     by_type = Counter(a.get("annotation_type") for a in annots)
     if len(annots) > 20 and len(by_type) == 1 and "source_note" in by_type:
