@@ -10,7 +10,9 @@ before matching. It is the Layer 3 analogue of the extraction corrections sideca
 Every entry names source rows, never unified-activity ids (`xact_id` is a counter
 in processing order and changes when the input changes). A row is
 `{table_number, activity_id, activity_name}`; `activity_name` is carried as a
-check and must equal the row's name in the resolved table.
+check and must equal the row's name in the resolved table. A column ('within'
+only) is `{table_number, column_position, composite_label}`, `composite_label`
+the check.
 
 Ops (fail fast on anything stale):
     keep    -- consolidation's result for the pair stands: `source` stays merged
@@ -20,11 +22,17 @@ Ops (fail fast on anything stale):
     merge   -- `source` joins the unified activity of `target`
     refines -- `source` (a row, or a whole table given as `{table_number}`)
                details the row `target`; nothing is merged
+    within  -- `source` (a column of a subsidiary table) is a timepoint taken
+               within the visit of `target` (a column of a main_soa table);
+               nothing is merged. A column without an entry is unknown.
 """
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-OPS = ("keep", "split", "merge", "refines")
+OPS = ("keep", "split", "merge", "refines", "within")
+
+# 'within': the table type each side must be in.
+WITHIN_TABLE_TYPES = {"source": "subsidiary", "target": "main_soa"}
 
 # What the consolidated view's draft puts where the reviewer must write.
 DRAFT_PLACEHOLDERS = {"reason": "<why>", "by": "<reviewer>"}
@@ -52,18 +60,42 @@ def _check_row(cid: str, side: str, row: dict, tables: Dict[int, dict]) -> None:
             f"'{hits[0]['activity_name']}', the entry says '{row['activity_name']}'")
 
 
+def _check_column(cid: str, side: str, col: dict, tables: Dict[int, dict]) -> None:
+    """The column must be a data column of a table of the type 'within' takes on this side, under the stated label."""
+    num = col["table_number"]
+    if num not in tables:
+        raise ValueError(f"Consolidation correction {cid}: {side} table {num} is not a table of this protocol")
+    ttype = tables[num]["table_metadata"]["table_type"]
+    if ttype != WITHIN_TABLE_TYPES[side]:
+        raise ValueError(
+            f"Consolidation correction {cid}: 'within' {side} table {num} is {ttype}, not {WITHIN_TABLE_TYPES[side]}")
+    hits = [c for c in tables[num]["schedule_columns"]
+            if c["column_position"] == col["column_position"] and not c.get("is_label_column", False)]
+    if len(hits) != 1:
+        raise ValueError(
+            f"Consolidation correction {cid}: {side} column T{num} position {col['column_position']} hit "
+            f"{len(hits)} data columns (expected 1)")
+    if hits[0].get("composite_label", "") != col["composite_label"]:
+        raise ValueError(
+            f"Consolidation correction {cid}: {side} column T{num} position {col['column_position']} is labelled "
+            f"'{hits[0].get('composite_label', '')}', the entry says '{col['composite_label']}'")
+
+
 def index_corrections(doc: dict, protocol_id: str,
-                      tables: Dict[int, dict]) -> Tuple[Dict[Tuple[int, str], dict], List[dict]]:
+                      tables: Dict[int, dict]) -> Tuple[Dict[Tuple[int, str], dict], List[dict], List[dict]]:
     """Check a consolidation sidecar against the resolved tables.
 
-    Returns (decisions, refinements): decisions maps a source row
+    Returns (decisions, refinements, withins): decisions maps a source row
     (table_number, activity_id) to its keep / split / merge entry — one decision
-    per source row; refinements is the list of `refines` entries in file order.
+    per source row; refinements is the list of `refines` entries and withins the
+    list of `within` entries, both in file order.
     """
     if doc["protocol_id"] != protocol_id:
         raise ValueError(f"Consolidation corrections are for '{doc['protocol_id']}', not '{protocol_id}'")
     decisions: Dict[Tuple[int, str], dict] = {}
     refinements: List[dict] = []
+    withins: List[dict] = []
+    within_pairs = {}
     seen_ids = set()
     for c in doc["corrections"]:
         cid = c["id"]
@@ -78,6 +110,28 @@ def index_corrections(doc: dict, protocol_id: str,
                 raise ValueError(
                     f"Consolidation correction {cid}: '{name}' is still the draft placeholder '{placeholder}'")
         source, target = c["source"], c["target"]
+        is_column = ["column_position" in source, "column_position" in target]
+        if op == "within" and is_column != [True, True]:
+            raise ValueError(
+                f"Consolidation correction {cid}: 'within' takes columns (table_number, column_position, "
+                f"composite_label) as 'source' and 'target'")
+        if op != "within" and any(is_column):
+            raise ValueError(f"Consolidation correction {cid}: only 'within' takes columns")
+        if op == "within":
+            if source["table_number"] == target["table_number"]:
+                raise ValueError(
+                    f"Consolidation correction {cid}: source and target are both in table {source['table_number']}")
+            _check_column(cid, "source", source, tables)
+            _check_column(cid, "target", target, tables)
+            pair = (source["table_number"], source["column_position"],
+                    target["table_number"], target["column_position"])
+            if pair in within_pairs:
+                raise ValueError(
+                    f"Consolidation correction {cid}: 'within' pair T{pair[0]} position {pair[1]} -> T{pair[2]} "
+                    f"position {pair[3]} is already stated ({within_pairs[pair]})")
+            within_pairs[pair] = cid
+            withins.append(c)
+            continue
         if "activity_id" not in target:
             raise ValueError(f"Consolidation correction {cid}: 'target' must be a row (table_number, activity_id, activity_name)")
         if "activity_id" not in source and op != "refines":
@@ -94,4 +148,4 @@ def index_corrections(doc: dict, protocol_id: str,
             raise ValueError(
                 f"Consolidation correction {cid}: source row T{key[0]} {key[1]} already has a decision ({decisions[key]['id']})")
         decisions[key] = c
-    return decisions, refinements
+    return decisions, refinements, withins

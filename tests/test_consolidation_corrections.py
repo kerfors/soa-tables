@@ -61,7 +61,7 @@ ISA_INFUSION = _row(2, "act-003", "Isatuximab")
 def test_without_a_sidecar_nothing_is_decided():
     out = consolidate_tables("NCT03637764", FIXTURE_FILES)
     meta = out["consolidation_metadata"]
-    assert out["schema_version"] == "1.7"
+    assert out["schema_version"] == "1.8"
     assert meta["review_stats"] == {"total": 0, "open": 0, "decided": 0, "near_matches": 0}
     assert meta["match_stats"]["decision"] == 0
     assert "corrections_applied" not in meta
@@ -316,3 +316,105 @@ def test_view_lists_the_same_matches_review_stats_counts():
     assert split["source"] == VITALS_T3 and split["target"] == VITALS_T1
     assert split["decision"] == {"correction_id": "ccorr-002", "op": "split", "reason": "test",
                                  "by": "test", "at": "2026-10-03T00:00:00Z"}
+
+
+# --- 'within' (B25): a subsidiary column is a timepoint within a main column ---
+# Test entries on the NCT03637764 fixture: T2 (PK flow chart) positions 2-3 are
+# Cycle 1 D1 timepoints, T1 position 4 is Cycle 1 D1. Not published decisions.
+
+def _label(table_number: int, position: int) -> str:
+    t = json.loads(FIXTURE_FILES[table_number - 1].read_text())
+    return next(c["composite_label"] for c in t["schedule_columns"] if c["column_position"] == position)
+
+
+def _col(table_number: int, position: int, label: str = None) -> dict:
+    return {"table_number": table_number, "column_position": position,
+            "composite_label": _label(table_number, position) if label is None else label}
+
+
+def _doc11(*entries: dict) -> dict:
+    doc = _doc("NCT03637764", *entries)
+    doc["schema_version"] = "1.1"
+    jsonschema.validate(doc, _schema("soa-consolidation-corrections.schema.json"))
+    return doc
+
+
+def _by_col(out: dict) -> dict:
+    return {(s["table_num"], s["column_position"]): c
+            for seg in out["timeline_segments"].values() for c in seg for s in c["source_columns"]}
+
+
+def test_within_links_columns_without_merging():
+    plain = consolidate_tables("NCT03637764", FIXTURE_FILES)
+    doc = _doc11({"op": "within", "source": _col(2, 2), "target": _col(1, 4)},
+                 {"op": "within", "source": _col(2, 3), "target": _col(1, 4)})
+    out = consolidate_tables("NCT03637764", FIXTURE_FILES, doc)
+    cols = _by_col(out)
+    main, sub2, sub3 = cols[(1, 4)], cols[(2, 2)], cols[(2, 3)]
+    assert sub2["within"] == [{"xcol_id": main["xcol_id"], "correction_id": "ccorr-001"}]
+    assert sub3["within"] == [{"xcol_id": main["xcol_id"], "correction_id": "ccorr-002"}]
+    assert main["contains"] == [{"xcol_id": sub2["xcol_id"], "correction_id": "ccorr-001"},
+                                {"xcol_id": sub3["xcol_id"], "correction_id": "ccorr-002"}]
+    assert sub2["segment"] == "subsidiary" and main["segment"] == "main"
+    # nothing else moves: same columns per segment, same matrix
+    assert {k: len(v) for k, v in out["timeline_segments"].items()} == \
+        {k: len(v) for k, v in plain["timeline_segments"].items()}
+    assert out["schedule_matrix"] == plain["schedule_matrix"]
+    unstated = [c for c in out["timeline_segments"]["subsidiary"] if c["xcol_id"] not in (sub2["xcol_id"], sub3["xcol_id"])]
+    assert not any("within" in c for c in unstated)
+    assert out["consolidation_metadata"]["corrections_applied"] == 2
+    _valid(out)
+
+
+def test_one_subsidiary_column_may_sit_within_two_main_columns():
+    doc = _doc11({"op": "within", "source": _col(2, 2), "target": _col(1, 4)},
+                 {"op": "within", "source": _col(2, 2), "target": _col(1, 7)})
+    out = consolidate_tables("NCT03637764", FIXTURE_FILES, doc)
+    cols = _by_col(out)
+    assert [w["xcol_id"] for w in cols[(2, 2)]["within"]] == [cols[(1, 4)]["xcol_id"], cols[(1, 7)]["xcol_id"]]
+    _valid(out)
+
+
+def _raw(*entries: dict) -> dict:
+    """A sidecar not passed through the JSON schema, for the checks consolidation makes itself."""
+    return {"schema_name": "soa-consolidation-corrections", "schema_version": "1.1", "protocol_id": "NCT03637764",
+            "corrections": [{"id": f"ccorr-{i:03d}", **e, "reason": "test", "by": "test",
+                             "at": "2026-11-24T00:00:00Z"} for i, e in enumerate(entries, 1)]}
+
+
+@pytest.mark.parametrize("entries, message", [
+    ([{"op": "within", "source": _col(2, 99, "x"), "target": _col(1, 4)}], "hit 0 data columns"),
+    ([{"op": "within", "source": _col(2, 2, "Cycle 1 D1"), "target": _col(1, 4)}], "is labelled"),
+    ([{"op": "within", "source": _col(1, 4), "target": _col(1, 4)}], "both in table 1"),
+    ([{"op": "within", "source": _col(1, 4), "target": _col(2, 2)}], "is main_soa, not subsidiary"),
+    ([{"op": "within", "source": _col(2, 2), "target": _col(3, 5)}], "is subsidiary, not main_soa"),
+    ([{"op": "within", "source": _col(2, 2), "target": PK}], "'within' takes columns"),
+    ([{"op": "refines", "source": _col(2, 2), "target": PK}], "only 'within' takes columns"),
+    ([{"op": "within", "source": _col(2, 2), "target": _col(1, 4)},
+      {"op": "within", "source": _col(2, 2), "target": _col(1, 4)}], "already stated"),
+], ids=["unknown column", "label mismatch", "source = target", "source not subsidiary", "target not main_soa",
+        "within with a row", "row op with a column", "pair twice"])
+def test_a_wrong_within_stops_consolidation(entries, message):
+    with pytest.raises(ValueError, match=message):
+        consolidate_tables("NCT03637764", FIXTURE_FILES, _raw(*entries))
+
+
+def test_the_schema_ties_column_sides_to_within():
+    schema = _schema("soa-consolidation-corrections.schema.json")
+    for entry in ({"op": "within", "source": _col(2, 2), "target": PK},
+                  {"op": "refines", "source": _col(2, 2), "target": PK},
+                  {"op": "keep", "source": ISA_INFUSION, "target": _col(1, 4)}):
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(_raw(entry), schema)
+
+
+def test_view_shows_within_on_the_subsidiary_grid():
+    doc = _doc11({"op": "within", "source": _col(2, 2), "target": _col(1, 4)})
+    out = consolidate_tables("NCT03637764", FIXTURE_FILES, doc)
+    main = _by_col(out)[(1, 4)]
+    html = generate_consolidated_html(out, row_names=_row_names(FIXTURE_FILES), corrections_doc=doc)
+    assert "main column, stated in the sidecar" in html
+    assert f"&#8627; {main['xcol_id']}</span>" in html
+    plain = generate_consolidated_html(consolidate_tables("NCT03637764", FIXTURE_FILES),
+                                       row_names=_row_names(FIXTURE_FILES))
+    assert "main column, stated in the sidecar" not in plain

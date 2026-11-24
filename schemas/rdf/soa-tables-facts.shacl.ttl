@@ -153,10 +153,12 @@ st:reviewStatus      a rdf:Property ; rdfs:label "review status" ; rdfs:comment 
 st:decidedBy         a rdf:Property ; rdfs:label "decided by" .
 st:op                a rdf:Property ; rdfs:label "op" .
 st:decisionSource    a rdf:Property ; rdfs:label "decision source" .
-st:decisionTarget    a rdf:Property ; rdfs:label "decision target" ; rdfs:comment "For op refines, the unified activity refined; for keep, split and merge, the source row the sidecar names." .
+st:decisionTarget    a rdf:Property ; rdfs:label "decision target" ; rdfs:comment "For op refines, the unified activity refined; for op within, the main unified column; for keep, split and merge, the source row the sidecar names." .
 st:reason            a rdf:Property ; rdfs:label "reason" .
 st:decidedByPerson   a rdf:Property ; rdfs:label "decided by person" .
 st:decidedAt         a rdf:Property ; rdfs:label "decided at" .
+st:withinColumn      a rdf:Property ; rdfs:label "within column" ;
+    rdfs:comment "This subsidiary unified column is a timepoint taken within the visit of the object, a main unified column, as stated by a 'within' entry of the consolidation corrections sidecar (that Decision is the provenance). Never derived from header text; a column without it is unknown." .
 
 # ============================================================== shapes
 
@@ -293,7 +295,8 @@ st:UnifiedColumnShape a sh:NodeShape ;
         [ sh:path st:segment ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( "main" "domain" "track" "subsidiary" ) ] ,
         [ sh:path st:populationTrack ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
         [ sh:path st:propertyValue ; sh:class st:ColumnPropertyValue ; sh:nodeKind sh:IRI ] ,
-        [ sh:path st:member ; sh:class st:SourceColumn ; sh:nodeKind sh:IRI ; sh:minCount 1 ] .
+        [ sh:path st:member ; sh:class st:SourceColumn ; sh:nodeKind sh:IRI ; sh:minCount 1 ] ,
+        [ sh:path st:withinColumn ; sh:class st:UnifiedColumn ; sh:nodeKind sh:IRI ] .
 
 st:ColumnPropertyValueShape a sh:NodeShape ;
     sh:targetClass st:ColumnPropertyValue ;
@@ -358,11 +361,11 @@ st:DecisionShape a sh:NodeShape ;
     sh:targetClass st:Decision ;
     sh:closed true ; sh:ignoredProperties ( rdf:type ) ;
     sh:property
-        [ sh:path st:op ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( "keep" "split" "merge" "refines" ) ] ,
+        [ sh:path st:op ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( "keep" "split" "merge" "refines" "within" ) ] ,
         [ sh:path st:decisionSource ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ;
-          sh:or ( [ sh:class st:SourceActivityRow ] [ sh:class st:SourceTable ] ) ] ,
+          sh:or ( [ sh:class st:SourceActivityRow ] [ sh:class st:SourceTable ] [ sh:class st:SourceColumn ] ) ] ,
         [ sh:path st:decisionTarget ; sh:nodeKind sh:IRI ; sh:minCount 1 ; sh:maxCount 1 ;
-          sh:or ( [ sh:class st:SourceActivityRow ] [ sh:class st:UnifiedActivity ] ) ] ,
+          sh:or ( [ sh:class st:SourceActivityRow ] [ sh:class st:UnifiedActivity ] [ sh:class st:UnifiedColumn ] ) ] ,
         [ sh:path st:reason ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
         [ sh:path st:decidedByPerson ; sh:datatype xsd:string ; sh:maxCount 1 ] ,
         [ sh:path st:decidedAt ; sh:datatype xsd:dateTime ; sh:maxCount 1 ] .

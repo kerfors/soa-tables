@@ -9,7 +9,7 @@ This is structural consolidation only:
   on any table pair: the activity stays separate and carries the near match as a
   hint (near_matches)
 - Human decisions on those matches, read from the protocol's consolidation
-  corrections sidecar when one exists (keep / split / merge / refines)
+  corrections sidecar when one exists (keep / split / merge / refines / within)
 - Column alignment into timeline segments (main, track, subsidiary); a continuation
   or domain table prints the columns of one main_soa table and its columns join
   those main columns (identity, inventory item 32 (a))
@@ -566,6 +566,8 @@ class UnifiedColumn:
     property_values: List[ColumnPropertyValue] = field(default_factory=list)
     population_track: Optional[str] = None
     source_columns: list = field(default_factory=list)
+    within: list = field(default_factory=list)
+    contains: list = field(default_factory=list)
 
     @property
     def table_nums(self) -> Set[int]:
@@ -578,7 +580,10 @@ class UnifiedColumn:
             'segment': self.segment,
             'population_track': self.population_track,
             'property_values': [pv.to_dict() for pv in self.property_values],
-            'source_columns': self.source_columns
+            'source_columns': self.source_columns,
+            # Present only when a 'within' entry of the sidecar names the column.
+            **({'within': self.within} if self.within else {}),
+            **({'contains': self.contains} if self.contains else {})
         }
 
 
@@ -694,6 +699,30 @@ class ColumnConsolidator:
         # Subsidiary
         for tnum in tables_by_type.get('subsidiary', []):
             self._add_table_columns(tables[tnum], tnum, 'subsidiary', None)
+
+    def apply_withins(self, withins: List[dict]):
+        """Record 'within' entries: `within` on the subsidiary column, `contains` on
+        the main column it sits within. Nothing is merged; the subsidiary column
+        stays in its own segment. Must be called after process_tables."""
+        by_position = {(sc['table_num'], sc['column_position']): ucol
+                       for ucol in self.columns for sc in ucol.source_columns}
+        for entry in withins:
+            cid, source, target = entry['id'], entry['source'], entry['target']
+            ends = []
+            for side, col in (('source', source), ('target', target)):
+                key = (col['table_number'], col['column_position'])
+                if key not in by_position:
+                    raise ValueError(
+                        f"Consolidation correction {cid}: {side} column T{key[0]} position {key[1]} "
+                        f"is not in any unified column")
+                ends.append(by_position[key])
+            source_col, target_col = ends
+            if source_col is target_col:
+                raise ValueError(
+                    f"Consolidation correction {cid}: source and target are the same unified column "
+                    f"({target_col.xcol_id})")
+            source_col.within.append({'xcol_id': target_col.xcol_id, 'correction_id': cid})
+            target_col.contains.append({'xcol_id': source_col.xcol_id, 'correction_id': cid})
 
     def _add_table_columns(self, table: dict, table_num: int, 
                            segment: str, track: Optional[str]):
@@ -1618,8 +1647,8 @@ def consolidate_tables(protocol_id: str, resolved_files: List[Path],
         tables_by_type[t['table_metadata']['table_type']].append(num)
 
     # Human decisions on cross-table matches, checked against the tables first
-    decisions, refinements = (
-        index_corrections(corrections_doc, protocol_id, tables) if corrections_doc else ({}, [])
+    decisions, refinements, withins = (
+        index_corrections(corrections_doc, protocol_id, tables) if corrections_doc else ({}, [], [])
     )
 
     # Activity consolidation
@@ -1663,6 +1692,7 @@ def consolidate_tables(protocol_id: str, resolved_files: List[Path],
     # Column consolidation
     col_consolidator = ColumnConsolidator()
     col_consolidator.process_tables(tables, tables_by_type)
+    col_consolidator.apply_withins(withins)
 
     # Build cross-table mappings (used by matrix and annotation consolidation)
     act_to_xact, col_to_xcol = build_cross_table_mappings(
@@ -1705,7 +1735,7 @@ def consolidate_tables(protocol_id: str, resolved_files: List[Path],
     # Build output
     return {
         "schema_name": "soa-tables-consolidated",
-        "schema_version": "1.7",
+        "schema_version": "1.8",
         "protocol_id": protocol_id,
         "consolidation_metadata": {
             "consolidated_at": datetime.now(timezone.utc).isoformat(),

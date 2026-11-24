@@ -326,6 +326,8 @@ def build_dataset(inp: dict, collections_commit: str, code_commit: str) -> Datas
             for s in c["source_columns"]:
                 add(node, ST.member, el(tables[s["table_num"]]["columns"][s["column_id"]]))
                 col_member[(c["xcol_id"], s["table_num"])] = s["column_id"]
+            for w in c.get("within", []):
+                add(node, ST.withinColumn, el(xm["columns"][w["xcol_id"]]))
 
     # consolidated cells: one source value each, derived from that table's cell
     row_member = {(ua["xact_id"], ref["table_num"]): ref["activity_id"]
@@ -389,16 +391,25 @@ def build_dataset(inp: dict, collections_commit: str, code_commit: str) -> Datas
             add(node, ST.decidedBy, decision(item))
     ua_of_row = {(ref["table_num"], ref["activity_id"]): ua["xact_id"]
                  for ua in cons["unified_activities"] for ref in ua["source_refs"]}
+    # 'within' names columns by (table_number, column_position)
+    at_position = {(s["table_num"], s["column_position"]): (c["xcol_id"], s["column_id"])
+                   for seg in cons["timeline_segments"].values() for c in seg for s in c["source_columns"]}
     for e in (doc["corrections"] if doc else []):
         node = el(minted["decisions"][e["id"]])
         add(node, RDF.type, ST.Decision)
         add(node, ST.op, _string(e["op"]))
         src, tgt = e["source"], e["target"]
-        add(node, ST.decisionSource, row_iri(src) if "activity_id" in src else el(tables[src["table_number"]]["table"]))
-        if e["op"] == "refines":
-            add(node, ST.decisionTarget, el(xm["activities"][ua_of_row[(tgt["table_number"], tgt["activity_id"])]]))
+        if e["op"] == "within":
+            add(node, ST.decisionSource, el(tables[src["table_number"]]["columns"][
+                at_position[(src["table_number"], src["column_position"])][1]]))
+            add(node, ST.decisionTarget, el(xm["columns"][at_position[(tgt["table_number"], tgt["column_position"])][0]]))
         else:
-            add(node, ST.decisionTarget, row_iri(tgt))
+            add(node, ST.decisionSource,
+                row_iri(src) if "activity_id" in src else el(tables[src["table_number"]]["table"]))
+            if e["op"] == "refines":
+                add(node, ST.decisionTarget, el(xm["activities"][ua_of_row[(tgt["table_number"], tgt["activity_id"])]]))
+            else:
+                add(node, ST.decisionTarget, row_iri(tgt))
         if "reason" in e:
             add(node, ST.reason, _string(e["reason"]))
         if "by" in e:
@@ -602,8 +613,22 @@ def graph_to_json(ds: Dataset) -> dict:
                            "property_type": str(one(s, ST.propertyType))})
 
     # unified columns: segments in order of their first column, columns in order of their anchor
+    # 'within': st:withinColumn is the fact, the Decision with op 'within' names it; the two must agree
+    ucols = of_type(ST.UnifiedColumn)
+    ucol_of_member = {m: s for s in ucols for m in g.objects(s, ST.member)}
+    within_decision = {(ucol_of_member[e["source"]], e["target"]): d
+                       for d, e in decisions.items() if e["op"] == "within"}
+    stated = {(s, o) for s in ucols for o in g.objects(s, ST.withinColumn)}
+    if stated != set(within_decision):
+        diff = sorted((lid(a), lid(b)) for a, b in stated ^ set(within_decision))
+        raise ValueError(f"st:withinColumn and the 'within' decisions disagree: {diff}")
+    within_of, contains_of = {}, {}
+    for (a, b), d in within_decision.items():
+        within_of.setdefault(a, []).append({"xcol_id": lid(b), "correction_id": lid(d)})
+        contains_of.setdefault(b, []).append({"xcol_id": lid(a), "correction_id": lid(d)})
+
     columns = []
-    for s in of_type(ST.UnifiedColumn):
+    for s in ucols:
         sources = sorted(({"table_id": I.table_id(table_num[one(c, ST.inTable)]),
                            "table_num": table_num[one(c, ST.inTable)], "column_id": lid(c),
                            "column_position": int(one(c, ST.columnPosition))}
@@ -618,7 +643,9 @@ def graph_to_json(ds: Dataset) -> dict:
             "property_values": [{"level": val(opt(v, ST.level)), "property_name": str(one(v, ST.propertyName)),
                                  "property_type": str(one(v, ST.propertyType)), "value": str(one(v, ST.value))}
                                 for v in values],
-            "source_columns": sources})
+            "source_columns": sources,
+            **({"within": sorted(within_of[s], key=_sort_key)} if s in within_of else {}),
+            **({"contains": sorted(contains_of[s], key=_sort_key)} if s in contains_of else {})})
     columns.sort(key=lambda c: (c["source_columns"][0]["table_num"], c["source_columns"][0]["column_position"]))
     segments = {}
     for c in columns:
@@ -706,7 +733,9 @@ FIELDS = {
     "refines": ({"xact_id", "correction_id"}, set()),
     "refined_by": ({"xact_id", "table_num", "correction_id"}, set()),
     "column": ({"xcol_id", "composite_label", "segment", "population_track", "property_values",
-                "source_columns"}, set()),
+                "source_columns", "within", "contains"}, set()),
+    "within": ({"xcol_id", "correction_id"}, set()),
+    "contains": ({"xcol_id", "correction_id"}, set()),
     "property_value": ({"level", "property_name", "property_type", "value"}, set()),
     "source_column": ({"table_id", "table_num", "column_id", "column_position"}, set()),
     "cell": ({"xact_id", "xcol_id", "consolidated_value", "source_values"}, set()),
@@ -808,6 +837,10 @@ def canonical(consolidated: dict, resolved: list, minted: dict) -> dict:
                 s["column_id"] = tables[s["table_num"]]["columns"][s["column_id"]]
                 sources.append(s)
             c["source_columns"] = sources
+            for k in ("within", "contains"):
+                if k in c:
+                    c[k] = sorted(({"xcol_id": cols[x["xcol_id"]], "correction_id": minted["decisions"][
+                        x["correction_id"]]} for x in map(lambda r: _keep(r, k), c[k])), key=_sort_key)
             out.append(c)
         segments.append([key, out])
 

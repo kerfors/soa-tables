@@ -142,6 +142,28 @@ def test_table_level_refines_conforms(shapes):
     assert validate(shapes, data) == (True, set())
 
 
+WITHIN = {
+    "t02": ':t02 a st:SourceTable ; st:tableNumber 2 ; st:tableType "subsidiary" ; st:firstPage :p3 ; st:lastPage :p3 .',
+    "cols": (':t01-c004 a st:SourceColumn ; st:columnPosition 4 ; st:inTable :t01 .\n'
+             ':t02-c002 a st:SourceColumn ; st:columnPosition 2 ; st:inTable :t02 .\n'
+             ':u-t01-c004 a st:UnifiedColumn ; st:compositeLabel "Cycle 1 / D1" ; st:segment "main" ; st:member :t01-c004 .\n'
+             ':u-t02-c002 a st:UnifiedColumn ; st:compositeLabel "Cycle 1 / D1 / SOI" ; st:segment "subsidiary" ;'
+             ' st:member :t02-c002 ; st:withinColumn :u-t01-c004 .'),
+    "decision2": ':decision-ccorr-002 a st:Decision ; st:op "within" ; st:decisionSource :t02-c002 ; st:decisionTarget :u-t01-c004 .',
+}
+
+
+def test_within_conforms(shapes):
+    assert validate(shapes, graph(**WITHIN)) == (True, set())
+
+
+def test_within_column_to_a_source_column_fails(shapes):
+    broken = {**WITHIN, "cols": WITHIN["cols"].replace("st:withinColumn :u-t01-c004", "st:withinColumn :t01-c004")}
+    conforms, found = validate(shapes, graph(**broken))
+    assert not conforms
+    assert found == {(ST.withinColumn, SH.ClassConstraintComponent)}
+
+
 BROKEN = {
     "op not in list": (
         {"decision": ':decision-ccorr-001 a st:Decision ; st:op "drop" ; st:decisionSource :t02-r001 ; st:decisionTarget :t01-r001 .'},

@@ -1133,6 +1133,21 @@ def gen_schedule_grid(data: dict, segment: str, columns: List[dict], pop_colors:
         label = f"Table {tnums[0]}" if len(tnums) == 1 else f"Tables {', '.join(str(t) for t in tnums)}"
         rows.append(f'<th colspan="{span}" class="table-run{border_class(start)}">{label}</th>')
     rows.append('</tr>')
+
+    # 'within' entries of the consolidation sidecar: the main column each subsidiary
+    # column is a timepoint within. An empty cell is unknown (no entry), not "none".
+    if segment == 'subsidiary' and any(col.get('within') for col in columns):
+        label_of = {c['xcol_id']: c.get('composite_label', '')
+                    for seg in data.get('timeline_segments', {}).values() for c in seg}
+        rows.append('<tr><th class="frozen-col1" style="text-align: left; font-size: 9px;">Within'
+                    '<br/><span style="font-size: 8px; opacity: 0.8;">main column, stated in the sidecar</span></th>'
+                    '<th class="frozen-col2"></th>')
+        for i, col in enumerate(columns):
+            within = '<br/>'.join(
+                f'<span title="{esc(label_of[w["xcol_id"]])} ({esc(w["correction_id"])})">&#8627; {esc(w["xcol_id"])}</span>'
+                for w in col.get('within', []))
+            rows.append(f'<td class="{border_class(i).strip()}" style="text-align: center; font-size: 9px;">{within}</td>')
+        rows.append('</tr>')
     
     if segment == 'track':
         rows.append('<tr><th class="frozen-col1"></th><th class="frozen-col2"></th>')
