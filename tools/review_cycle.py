@@ -146,6 +146,47 @@ def split_embedded(text: str):
     return "".join(parts), blobs
 
 
+def keyed(blobs):
+    """{(name, occurrence): obj} — the second `const m = …` in a page is ('m', 1)."""
+    seen, out = Counter(), {}
+    for name, obj in blobs:
+        out[(name, seen[name])] = obj
+        seen[name] += 1
+    return out
+
+
+# A page-code change (text outside embedded JSON) is kept as one detail entry, so the report can
+# print it once and refer to it from every other file with the same change.
+CODE_MARK = "\0code\0"
+
+
+def print_details(path: str, details: list, shown_code: dict):
+    fields = [d for d in details if not d.startswith(CODE_MARK)]
+    code = [d[len(CODE_MARK):] for d in details if d.startswith(CODE_MARK)]
+    # An empty object or list added (a new field, empty on most rows) is counted, not listed.
+    empty = [d for d in fields if d.endswith((": added ({})", ": added ([])"))]
+    if len(fields) > DETAIL_CAP or empty:
+        pattern = Counter(re.sub(r"\[\d+\]", "[]", d.split(": ")[0]) for d in fields)
+        print("      by field: " + ", ".join(f"{k} {n}" for k, n in pattern.most_common())
+              + (f" ({len(empty)} of them added empty, not listed)" if empty else ""))
+    fields = [d for d in fields if d not in empty]
+    for d in fields[:DETAIL_CAP]:
+        print(f"      {d}")
+    if len(fields) > DETAIL_CAP:
+        print(f"      … {len(fields) - DETAIL_CAP} more")
+    for c in code:
+        if c in shown_code:
+            print(f"      page code: same change as {shown_code[c]}")
+            continue
+        shown_code[c] = path.split("/")[-1]
+        lines = c.split("\n")
+        print(f"      page code ({len(lines)} lines):")
+        for line in lines[:DETAIL_CAP]:
+            print(f"        {line}")
+        if len(lines) > DETAIL_CAP:
+            print(f"        … {len(lines) - DETAIL_CAP} more")
+
+
 def short(value) -> str:
     s = json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else repr(value)
     return s if len(s) <= 80 else s[:77] + "..."
@@ -230,12 +271,18 @@ def classify(path: str, old, new):
         o_rest, o_blobs = split_embedded(old)
         n_rest, n_blobs = split_embedded(new)
         details = []
-        if [b[0] for b in o_blobs] != [b[0] for b in n_blobs]:
-            details.append(f"embedded JSON: {[b[0] for b in o_blobs]} → {[b[0] for b in n_blobs]}")
-        else:
-            for (name, o), (_, n) in zip(o_blobs, n_blobs):
-                details.extend(json_diff(mask(o), mask(n), name))
-        details.extend(text_diff(mask_text(o_rest), mask_text(n_rest)))
+        # Pair embedded objects by name and occurrence, so a new or removed object elsewhere in
+        # the page does not hide the field compare of the others (D on the review page).
+        o_named, n_named = keyed(o_blobs), keyed(n_blobs)
+        for key in o_named.keys() - n_named.keys():
+            details.append(f"embedded {key[0]}: removed")
+        for key in n_named.keys() - o_named.keys():
+            details.append(f"embedded {key[0]}: added")
+        for key in [k for k in o_named if k in n_named]:
+            details.extend(json_diff(mask(o_named[key]), mask(n_named[key]), key[0]))
+        code = list(text_diff(mask_text(o_rest), mask_text(n_rest)))
+        if code:
+            details.append(CODE_MARK + "\n".join(code))
         return ("timestamp-only", []) if not details else ("real", details)
     details = list(text_diff(mask_text(old), mask_text(new)))
     return ("timestamp-only", []) if not details else ("real", details)
@@ -395,12 +442,10 @@ def cmd_rebuild(args):
     for p in timestamp_only:
         print(f"  {p}")
     print(f"\nReal changes (kept): {len(real)}")
+    shown_code = {}
     for p, details in real.items():
         print(f"  {p}{'   [outside the collection]' if not p.startswith(coll_rel + '/') else ''}")
-        for d in details[:DETAIL_CAP]:
-            print(f"      {d}")
-        if len(details) > DETAIL_CAP:
-            print(f"      … {len(details) - DETAIL_CAP} more")
+        print_details(p, details, shown_code)
     print("\nNext: review the real changes, then  review_cycle.py commit-data -m MESSAGE")
 
 
