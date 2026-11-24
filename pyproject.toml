@@ -17,7 +17,7 @@ notebooks = ["pandas", "requests", "pymupdf", "pymupdf4llm", "openpyxl"]
 bands = ["numpy"]
 # Collection index: the study manifest (studies_protocols.xlsx) and the rendered extraction
 # logs. It fails loudly without these.
-index = ["openpyxl", "markdown"]
+index = ["openpyxl", "markdown==3.10.3"]  # extraction-log HTML depends on the version (B37)
 test = ["pytest", "pyshacl", "jsonschema"]
 
 [project.scripts]
