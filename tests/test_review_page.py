@@ -149,3 +149,21 @@ def test_mark_check_compares_a_merged_mark_once_over_its_span():
     repeats it over the covered columns with source_range. That agrees with the page."""
     model = build_review_model("NCT01847274", "usdm_data")
     assert [d for t in model["tables"] for d in t["checks"]["mark_disagreements"]] == []
+
+
+@pytest.mark.skipif(
+    not (shutil.which("pdftoppm") and "misc_studies" in config.COLLECTIONS
+         and config.find_soa_pdf("NCT03739203", "misc_studies")),
+    reason="needs poppler and the misc_studies PDFs")
+def test_a_pointer_down_whole_columns_is_shown_as_a_column_note():
+    # NCT03739203 Table 4 (T2), p.85: grey cells merged over every activity row of the
+    # Visit 1 and Visit 2 columns print a pointer; they are source notes pr1 / pr2 on the
+    # header cells and the columns hold no mark (B5). The header-cell pointers of other
+    # protocols sit on columns with marks and are not column notes (B46).
+    model = build_review_model("NCT03739203", "misc_studies")
+    notes = {t["number"]: t["column_notes"] for t in model["tables"]}
+    assert notes[1] == {}
+    assert sorted(notes[2]) == [2, 3]
+    assert [n["marker"] for n in notes[2][2]] == ["pr1"]
+    assert [n["marker"] for n in notes[2][3]] == ["pr2"]
+    assert "td.mark.colnote" in render_review_html(model)

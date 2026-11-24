@@ -178,6 +178,20 @@ def _table_model(extraction: dict, sidecar: Path | None, audit_table: dict, pdf:
                             "rows": rows, "prop_rows": prop_rows,
                             "other": other})
 
+    # A pointer printed down every activity row of a column (prompt §5 'A pointer down whole
+    # columns'): a source_note bound to a header cell of a column that holds no mark. The page
+    # tints that column's activity cells and shows the note text on hover (B46).
+    marked_cols = {c for cols in marks.values() for c in cols}
+    column_notes: dict[int, list] = {}
+    for an in extraction["annotations"]:
+        if an["annotation_type"] != "source_note":
+            continue
+        for loc in an["marker_locations"]:
+            if (loc["location_type"] == "schedule_cell" and loc.get("row_position") in props
+                    and loc.get("column_position") not in marked_cols):
+                column_notes.setdefault(loc["column_position"], []).append(
+                    {"marker": an["annotation_marker"], "text": display_text(an)})
+
     offset = audit_table.get("doc_page_offset")
     has_source_page = any("source_page" in a for a in activities.values())
     pages, matched, disagreements, page_mark_total = [], {}, [], 0
@@ -284,6 +298,7 @@ def _table_model(extraction: dict, sidecar: Path | None, audit_table: dict, pdf:
         "number": tnum, "title": meta["table_title"], "type": meta["table_type"],
         "doc_pages": [meta["page_start"], meta["page_end"]], "sidecar": sidecar.name if sidecar else None,
         "data_cols": data_cols,
+        "column_notes": column_notes,
         "props": [{"row": rp, "name": p["property_name"], "type": p["property_type"],
                    "values": grid.get(rp, {}), "markers": _markers(p.get("annotation_markers")),
                    "cell_markers": grid_markers.get(rp, {})}
@@ -566,6 +581,7 @@ table.soa tr.hdr td{background:#e9eef5;font-weight:600}
 table.soa tr.sect td.name{font-weight:600;background:#f3f5f8}
 table.soa td.mark .cv{font-size:10px;white-space:nowrap}
 table.soa td.mark .cv0{color:var(--muted)}
+table.soa td.mark.colnote{background:#e6e8eb}
 table.soa td.mark.bad{background:#fde0e0;color:var(--bad);font-weight:600}
 .badge{display:inline-block;font-size:10px;padding:0 5px;border-radius:9px;margin-left:5px;vertical-align:1px;border:1px solid}
 .badge.nf{color:var(--warn);border-color:var(--warn)}
@@ -745,7 +761,8 @@ function buildTable(){
   (foldsByRow[a.row]||[]).forEach(f=>{ const others=f.sources.filter(s=>!(s.table===t.number&&s.row===a.row)); badges.push(`<span class="badge fold" data-x="${f.xact_id}" title="${esc(f.status)} — same activity as: ${esc(others.map(o=>'Table '+o.table+' row '+o.row).join(', '))}">${f.status==='exact'?'also in':'matched to'} ${others.map(o=>'T'+o.table).join(' ')}</span>`); });
   const sups=sup(a.markers);
   h+=`<tr class="act${a.is_header?' sect':''}" data-row="${a.row}"><td class="name" style="padding-left:${a.indent*18+4}px">${esc(a.name)}${sups}${badges.join('')}${a.doc_page?`<span class="small" style="float:right">p.${a.doc_page}</span>`:''}</td>`;
-  cols.forEach(c=>{ h+=`<td class="mark${bad.has(c)?' bad':''}">${marks.has(c)?cell(a,c):''}${sup(a.cell_markers[c])}</td>`; });
+  cols.forEach(c=>{ const cn=t.column_notes[c];
+   h+=`<td class="mark${bad.has(c)?' bad':''}${cn?' colnote':''}"${cn?` title="${esc(cn.map(n=>n.marker+': '+n.text).join('\n'))}"`:''}>${marks.has(c)?cell(a,c):''}${sup(a.cell_markers[c])}</td>`; });
   h+='</tr>';
  });
  el.innerHTML=h+'</tbody>';
