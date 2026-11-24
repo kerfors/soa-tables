@@ -113,6 +113,9 @@ def _table_model(extraction: dict, sidecar: Path | None, audit_table: dict, pdf:
     activities = {a["row_position"]: a for a in extraction["activities"]}
     props = {p["row_position"]: p for p in extraction["schedule_properties"]}
     marks: dict[int, set[int]] = {}
+    # The printed value of a mark that is not an X (text, '(x)', '-', an arrow; '' when the
+    # extraction recorded none), shown in the cell instead of the X glyph (B45).
+    cell_values: dict[int, dict[int, str]] = {}
     # Note markers on single cells (a mark, a header cell), drawn where they are printed (item 24d).
     # A marker that is the cell's own symbol is left out: the 'X' legend bound to every 'X' mark
     # would only repeat the mark ('Xa' keeps its 'a').
@@ -127,6 +130,9 @@ def _table_model(extraction: dict, sidecar: Path | None, audit_table: dict, pdf:
     set_aside = 0
     for c in extraction["activity_schedule"]:
         marks.setdefault(c["row_position"], set()).add(c["column_position"])
+        value = (c.get("cell_value") or "").strip()
+        if value not in ("X", "x"):
+            cell_values.setdefault(c["row_position"], {})[c["column_position"]] = value
         if c.get("method") in ("raster_pixel_detection", "visual_read"):
             read_from_image.add((c["row_position"], c["column_position"]))
         if c.get("source_range"):  # optional in the schema; empty string = not from a merge
@@ -286,6 +292,7 @@ def _table_model(extraction: dict, sidecar: Path | None, audit_table: dict, pdf:
                         "indent": a["activity_name_source"].get("indentation_level", 0),
                         "doc_page": a.get("source_page"), "markers": _markers(a.get("annotation_markers")),
                         "marks": sorted(marks.get(rp, set())), "cell_markers": cell_markers.get(rp, {}),
+                        "cell_values": cell_values.get(rp, {}),
                         "band": list(matched.get(rp, (None, None))),
                         "is_header": bool(a.get("is_section_header")), "is_redacted": rp in redacted,
                         "name_composed": a["activity_name_source"].get("cell_text") != a["activity_name"]}
@@ -557,6 +564,8 @@ table.soa tr.alt td{background:#e1f2fb!important}
 table.soa tr.fold td{background:#d9efec!important}
 table.soa tr.hdr td{background:#e9eef5;font-weight:600}
 table.soa tr.sect td.name{font-weight:600;background:#f3f5f8}
+table.soa td.mark .cv{font-size:10px;white-space:nowrap}
+table.soa td.mark .cv0{color:var(--muted)}
 table.soa td.mark.bad{background:#fde0e0;color:var(--bad);font-weight:600}
 .badge{display:inline-block;font-size:10px;padding:0 5px;border-radius:9px;margin-left:5px;vertical-align:1px;border:1px solid}
 .badge.nf{color:var(--warn);border-color:var(--warn)}
@@ -626,7 +635,10 @@ const tableIndex = num => D.tables.findIndex(t=>t.number===num);
  const acts = D.tables.reduce((n,t)=>n+t.activities.length,0), marks = D.tables.reduce((n,t)=>n+t.checks.marks,0);
  const notes = D.tables.reduce((n,t)=>n+t.annotations.length,0);
  const missed = D.tables.reduce((n,t)=>n+t.checks.on_page_not_extracted.length,0);
- const unplaced = D.tables.reduce((n,t)=>n+t.checks.extracted_not_on_page.length,0);
+ // Rows on a page the checker could not read are not checked, not unplaced (B45).
+ const notRead = D.tables.reduce((n,t)=>{ const u=new Set(t.checks.unreadable_pages.map(x=>x.doc_page)), dp={};
+  t.activities.forEach(a=>{dp[a.row]=a.doc_page;}); return n+t.checks.extracted_not_on_page.filter(r=>u.has(dp[r])).length; },0);
+ const unplaced = D.tables.reduce((n,t)=>n+t.checks.extracted_not_on_page.length,0) - notRead;
  const badRows = new Set(); D.tables.forEach(t=>t.checks.mark_disagreements.forEach(d=>badRows.add(t.number+':'+d.row)));
  const badCells = D.tables.reduce((n,t)=>n+t.checks.mark_disagreements.length,0);
  const rs = D.review_status;
@@ -643,7 +655,7 @@ const tableIndex = num => D.tables.findIndex(t=>t.number===num);
  document.getElementById('tiles').innerHTML = [
   ['', 'Extracted', `${acts} activities`, `${D.tables.length} table${D.tables.length!==1?'s':''} · ${marks} marks · ${notes} annotations`],
   rowsTile,
-  [unplaced?'warn':'ok', 'Rows the checker could not place', unplaced, 'extracted rows with no matching page band (section headings, composed names, packed rows)'],
+  [unplaced?'warn':(notRead?'':'ok'), 'Rows the checker could not place', unplaced, 'extracted rows with no matching page band (section headings, composed names, packed rows)'+(notRead?` · ${notRead} not checked (on pages the checker could not read)`:'')],
   marksTile,
   [rs.open?'warn':'ok', 'Decisions open', rs.open, `${rs.decided} of ${rs.total} extraction calls decided`],
  ].map(([c,k,v,d])=>`<div class="tile ${c}"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join('');
@@ -717,17 +729,23 @@ function buildTable(){
  let h='<thead>';
  t.props.forEach(p=>{ h+=`<tr class="hdr" data-prop="${p.row}"><th class="name">${esc(p.name)}${sup(p.markers)} <span class="badge cm">header · ${esc(p.type)}</span></th>`+cols.map(c=>`<th>${esc(p.values[c]||'')}${sup(p.cell_markers[c])}</th>`).join('')+'</tr>'; });
  h+='</thead><tbody>';
+ const unread={}; t.checks.unreadable_pages.forEach(u=>{unread[u.doc_page]=u.reason;});
+ const cell=(a,c)=>{ const v=a.cell_values[c];
+  if(v===undefined) return '✕';
+  if(v==='') return '<span class="cv0" title="a mark with no value recorded in the extraction">◦</span>';
+  return `<span class="cv" title="${esc(v)}">${esc(v.length>12?v.slice(0,11)+'…':v)}</span>`; };
  t.activities.forEach(a=>{
   const marks=new Set(a.marks), bad=new Set(badByRow[a.row]||[]);
   const badges=[];
   if(a.is_redacted) badges.push('<span class="badge red" title="activity name redacted in the public protocol">redacted</span>');
-  if(a.band[0]===null) badges.push('<span class="badge nf" title="the page checker could not find this row in any rule-line band">not placed on page</span>');
+  if(a.band[0]===null && unread[a.doc_page]) badges.push(`<span class="badge cm" title="p.${a.doc_page}: ${esc(unread[a.doc_page])} — the page checker could not read this page">not checked${unread[a.doc_page].startsWith('no text layer')?' (image-only page)':''}</span>`);
+  else if(a.band[0]===null) badges.push('<span class="badge nf" title="the page checker could not find this row in any rule-line band">not placed on page</span>');
   if(a.name_composed) badges.push('<span class="badge cm" title="the name was composed from more than one printed cell">composed name</span>');
   if(bad.size) badges.push(`<span class="badge bad">${bad.size} marks differ</span>`);
   (foldsByRow[a.row]||[]).forEach(f=>{ const others=f.sources.filter(s=>!(s.table===t.number&&s.row===a.row)); badges.push(`<span class="badge fold" data-x="${f.xact_id}" title="${esc(f.status)} — same activity as: ${esc(others.map(o=>'Table '+o.table+' row '+o.row).join(', '))}">${f.status==='exact'?'also in':'matched to'} ${others.map(o=>'T'+o.table).join(' ')}</span>`); });
   const sups=sup(a.markers);
   h+=`<tr class="act${a.is_header?' sect':''}" data-row="${a.row}"><td class="name" style="padding-left:${a.indent*18+4}px">${esc(a.name)}${sups}${badges.join('')}${a.doc_page?`<span class="small" style="float:right">p.${a.doc_page}</span>`:''}</td>`;
-  cols.forEach(c=>{ h+=`<td class="mark${bad.has(c)?' bad':''}">${marks.has(c)?'✕':''}${sup(a.cell_markers[c])}</td>`; });
+  cols.forEach(c=>{ h+=`<td class="mark${bad.has(c)?' bad':''}">${marks.has(c)?cell(a,c):''}${sup(a.cell_markers[c])}</td>`; });
   h+='</tr>';
  });
  el.innerHTML=h+'</tbody>';
@@ -846,7 +864,14 @@ function buildChecks(){
  }
  h+=`<h3 style="font-size:13px;margin:8px 0 4px">Printed rows not extracted (${c.on_page_not_extracted.length})</h3>`;
  h+=c.on_page_not_extracted.length? `<ul class="plain">${c.on_page_not_extracted.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="small">None — every row band with a label the checker could read matches an extracted row.</p>';
- h+=`<h3 style="font-size:13px;margin:12px 0 4px">Extracted rows the checker could not place (${c.extracted_not_on_page.length})</h3><p class="small">Usually section headings printed as full-width shaded bands, names composed from two cells, or tightly packed rows the band detector merged. Click to locate in the table.</p><ul class="plain">${c.extracted_not_on_page.map(r=>`<li><a href="#" data-row="${r}">${esc(rowLabel(r))}</a>${m[r]&&m[r].doc_page?` <span class="small">p.${m[r].doc_page}</span>`:''}</li>`).join('')}</ul>`;
+ const unread={}; c.unreadable_pages.forEach(u=>{unread[u.doc_page]=u.reason;});
+ const rowLi=r=>`<li><a href="#" data-row="${r}">${esc(rowLabel(r))}</a>${m[r]&&m[r].doc_page?` <span class="small">p.${m[r].doc_page}</span>`:''}</li>`;
+ const notRead=c.extracted_not_on_page.filter(r=>m[r]&&unread[m[r].doc_page]), unplaced=c.extracted_not_on_page.filter(r=>!(m[r]&&unread[m[r].doc_page]));
+ h+=`<h3 style="font-size:13px;margin:12px 0 4px">Extracted rows the checker could not place (${unplaced.length})</h3><p class="small">Usually section headings printed as full-width shaded bands, names composed from two cells, or tightly packed rows the band detector merged. Click to locate in the table.</p><ul class="plain">${unplaced.map(rowLi).join('')}</ul>`;
+ if(notRead.length){
+  const pg=[...new Set(notRead.map(r=>m[r].doc_page))].map(p=>`p.${p} — ${esc(unread[p])}`).join('; ');
+  h+=`<h3 style="font-size:13px;margin:12px 0 4px">Extracted rows on pages the checker could not read (${notRead.length})</h3><p class="small">Not checked: ${pg}. Nothing is read from pixels, so these rows are neither placed nor missing.</p><ul class="plain">${notRead.map(rowLi).join('')}</ul>`;
+ }
  const nb=Object.keys(badByRow).length;
  h+=`<h3 style="font-size:13px;margin:12px 0 4px">Mark check (${nb} row${nb!==1?'s':''})</h3><p class="small">Every mark printed in the page's text layer — an X, a code, a time, a dash — binned into the detected row band and column, compared with the extracted marks. A value printed once across merged columns is compared once over its span; words of the row's annotations are not marks. A difference is either an extraction error or a band drawn at the wrong rule — look at the page before deciding.</p>`;
  Object.entries(badByRow).forEach(([r,ds])=>{ h+=`<div><a href="#" data-row="${r}">${esc(rowLabel(+r))}</a>: ${ds.length} cells — ${ds.filter(d=>d.on_page).length} on page only, ${ds.filter(d=>d.extracted).length} extracted only</div>`; });
