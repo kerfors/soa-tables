@@ -387,7 +387,7 @@ def cmd_rebuild(args):
 
     check_code_clean()
     top = collections_top()
-    coll_rel = str(config.get_collection_path(collection).resolve().relative_to(top))
+    coll_rel = str(config.get_collection_root(collection).resolve().relative_to(top))
     before = dirty(top)
     outside = [p for p in before if not p.startswith(coll_rel + "/")]
     if outside:
