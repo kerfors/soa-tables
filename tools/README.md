@@ -85,3 +85,36 @@ Not part of the re-extraction harness.
 | script | what it does |
 |---|---|
 | `build_explainer.py` | builds `docs/schema-chain.html`, the infographic of the schemas, from `schemas/*.json` and `explainer_schema_chain.template.html`; every field path the page names is checked against its schema, and a path that no longer exists stops the build. Run it after a schema change |
+| `review_cycle.py` | the review cycle after a review decision: rebuild, restore timestamp-only files, data commit, TriG + pytest, TriG commit — see below |
+
+## Review cycle (after a review decision)
+
+Every review change ends in two collections commits: the data commit (sidecars and the regenerated files)
+and the TriG commit, because the TriG pins the data commit (`st:collectionsCommit`) and the code commit
+(`st:codeCommit`, soa-tables HEAD). `review_cycle.py` runs it in four calls with two stops:
+
+```
+python tools/review_cycle.py rebuild <collection> [PROTOCOL ...]   # stop: read the report
+python tools/review_cycle.py commit-data -m "..."
+python tools/review_cycle.py trig                                  # stop: read the quad diff and pytest
+python tools/review_cycle.py commit-trig -m "..."
+```
+
+`rebuild` runs the `01_batch.ipynb` steps and both index pages (no protocol given: every extractable
+protocol of the collection), then compares every changed file with HEAD with the run timestamps masked:
+`resolved_at`, `consolidated_at`, `generated_at`, `audited_at` (as JSON keys, in JSON embedded in HTML,
+and as rendered HTML fields) and `generated <time>` in page text. A file whose masked compare is empty is
+restored with `git restore`; every other file is kept and reported field by field. Timestamp-only is shown,
+not assumed (B34): a page with real changes is never reverted. The list of timestamps is closed on purpose
+— a new timestamp makes files show up as real changes until it is added to the script.
+
+`trig` writes `<protocol>_facts.trig`, prints an rdflib quad diff against HEAD (non-blank quads per
+predicate, pinned values old → new, blank-node triples by isomorphism) and runs pytest; `trig --no-test`
+followed by `test` splits that when a call has little time. `commit-trig` refuses unless pytest passed
+against the current commits. `tests/test_review_status_committed.py` checks that every review page shows
+the review status its sidecars give.
+
+The script never pushes, never uses `git add -A`, never edits sidecars, and never runs the next step by
+itself. Edits made before `rebuild` (sidecars, manifest) go into the data commit as they are; `rebuild`
+refuses if generated files are already dirty, or if files outside the collection are. Where the repo has no
+git identity (the Cowork VM), commits use `-c user.name/-c user.email`; no config is changed.
